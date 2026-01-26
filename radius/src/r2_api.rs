@@ -81,13 +81,13 @@ pub struct Instruction {
     pub r#type: String,
 
     #[serde(default)]
-    pub type_num: i64,
+    pub type_num: u64,
 
     #[serde(default)]
-    pub jump: i64,
+    pub jump: u64,
 
     #[serde(default)]
-    pub fail: i64,
+    pub fail: u64,
 }
 
 fn invalid() -> String {
@@ -291,11 +291,11 @@ pub struct BasicBlock {
     pub ninstr: u64,
     pub traced: bool,
 
-    #[serde(default = "zero")]
-    pub jump: i64,
+    #[serde(default)]
+    pub jump: u64,
 
-    #[serde(default = "zero")]
-    pub fail: i64,
+    #[serde(default)]
+    pub fail: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

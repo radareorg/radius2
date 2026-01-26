@@ -21,8 +21,8 @@ use std::collections::{HashMap, HashSet};
 
 const INSTR_NUM: usize = 64;
 // const COLOR: bool = true;
-const CALL_TYPE: i64 = 3;
-const RETN_TYPE: i64 = 5;
+const CALL_TYPE: u64 = 3;
+const RETN_TYPE: u64 = 5;
 // const NOP_TYPE: i64 = 8;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -552,10 +552,10 @@ impl Processor {
 
         state.esil.pcs.clear();
         if instr.jump != 0 {
-            state.esil.pcs.push(instr.jump as u64);
+            state.esil.pcs.push(instr.jump);
 
             if instr.fail != 0 {
-                state.esil.pcs.push(instr.fail as u64);
+                state.esil.pcs.push(instr.fail);
             }
         }
 
@@ -567,7 +567,7 @@ impl Processor {
         }
 
         if instr.type_num == CALL_TYPE {
-            state.backtrace.push((instr.jump as u64, new_pc));
+            state.backtrace.push((instr.jump, new_pc));
         }
 
         // skip executing this instruction
