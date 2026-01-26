@@ -25,6 +25,7 @@ pub enum Operations {
     LeftShift,
     LogicalRightShift,
     RightShift,
+    ArithmeticRightShift,
     LeftRotation,
     RightRotation,
     SignExtend,
@@ -133,6 +134,7 @@ impl Operations {
             "<<" => Operations::LeftShift,
             ">>" => Operations::LogicalRightShift,
             ">>>>" => Operations::RightShift,
+            "ASR" => Operations::ArithmeticRightShift,
             "<<<" => Operations::LeftRotation,
             ">>>" => Operations::RightRotation,
             "~" => Operations::SignExtend,
@@ -476,6 +478,12 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
             binary_operation!(state, >>);
         }
         Operations::RightShift => {
+            let sz = get_size(state);
+            let arg1 = pop_value(state, false, true);
+            let arg2 = pop_value(state, false, true);
+            push_value(state, arg1.asr(arg2, sz));
+        }
+        Operations::ArithmeticRightShift => {
             let sz = get_size(state);
             let arg1 = pop_value(state, false, true);
             let arg2 = pop_value(state, false, true);
