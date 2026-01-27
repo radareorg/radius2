@@ -1,0 +1,44 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y gawk binutils build-essential
+
+    - name: Install radare2
+      run: |
+        git clone https://github.com/radareorg/radare2.git --depth=1
+        cd radare2
+        ./sys/install.sh
+
+    - name: Build Package
+      run: |
+        cd dist/debian
+        make
+        mv *.deb ../../target/release/
+        zip -j ../../target/release/radius2.zip ../../target/release/radius2
+
+    - name: Create GitHub Release
+      uses: softprops/action-gh-release@v2
+      with:
+        files: |
+          target/release/radius2.zip
+          target/release/*.deb
+        name: Release ${{ github.ref_name }}
+        draft: false
+        prerelease: false
