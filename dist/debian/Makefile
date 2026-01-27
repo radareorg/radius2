@@ -14,6 +14,8 @@ DOCKCROSS=$(PWD)/../dockcross
 #R2PLUGDIR=$(shell r2 -H R2_LIBR_PLUGINS)
 #R2PLUGDIR=/usr/lib/radare2/$(R2_VERSION)
 
+R2_LIBEXT=$(shell r2 -H R2_LIBEXT)
+
 ifeq ($(R2_LIBEXT),)
 error:
 	@echo "Cannot find r2"
