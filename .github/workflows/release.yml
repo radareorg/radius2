@@ -1,5 +1,8 @@
 name: Release
 
+env:
+  R2V: 6.0.8
+
 on:
   push:
     tags:
@@ -22,9 +25,10 @@ jobs:
 
     - name: Install radare2
       run: |
-        git clone https://github.com/radareorg/radare2.git --depth=1
-        cd radare2
-        ./sys/install.sh
+        wget https://github.com/radareorg/radare2/releases/download/${{env.R2V}}/radare2_${{env.R2V}}_amd64.deb
+        wget https://github.com/radareorg/radare2/releases/download/${{env.R2V}}/radare2-dev_${{env.R2V}}_amd64.deb
+        sudo dpkg -i radare2_${{env.R2V}}_amd64.deb
+        sudo dpkg -i radare2-dev_${{env.R2V}}_amd64.deb
 
     - name: Build Package
       run: |
