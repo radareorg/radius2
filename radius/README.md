@@ -2,6 +2,8 @@
 
 [![Rust](https://github.com/radareorg/radius2/actions/workflows/rust.yml/badge.svg)](https://github.com/radareorg/radius2/actions/workflows/rust.yml)
 
+This repository is a continuation of the work from [@aemmitt-ns](https://github.com/aemmitt-ns/radius2) maintained by the [radareorg](https://github.com/radareorg) community.
+
 `radius2` is a fast symbolic execution and taint analysis framework using `radare2` that is focused on covering many different architectures and executable formats. It also strives to be easy to use and has a CLI tool that makes some reversing tasks as easy as adding a symbolic value and setting a string to reach or avoid. Reversing challenges can be solved as easily as the example below. 
 ```
 $ radius2 -p ais3 -s flag 184 -X sorry
