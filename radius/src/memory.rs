@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::collections::HashSet;
 //use ahash::AHashMap;
 //type HashMap<P, Q> = AHashMap<P, Q>;
 
@@ -40,6 +41,7 @@ pub struct Memory {
     pub endian: Endian,
     pub segs: Vec<MemorySegment>,
     pub blank: bool,
+    pub write_log: WriteLog,
 }
 
 pub enum Permission {
@@ -57,6 +59,21 @@ pub struct MemorySegment {
     pub write: bool,
     pub exec: bool,
     pub init: bool,
+}
+
+#[derive(Clone)]
+pub struct WriteLog {
+    pub new_epoch: u64,
+    pub chunks: HashSet<u64>,
+}
+
+impl Default for WriteLog {
+    fn default() -> Self {
+        WriteLog {
+            new_epoch: 0,
+            chunks: HashSet::new(),
+        }
+    }
 }
 
 impl Memory {
@@ -99,6 +116,7 @@ impl Memory {
             endian: Endian::from_string(endian),
             segs,
             blank,
+            write_log: WriteLog::default(),
         }
     }
 
@@ -565,6 +583,23 @@ impl Memory {
         prot_str
     }
 
+    #[inline]
+    pub fn chunk_base(addr: u64) -> u64 {
+        let mask = !(READ_CACHE as u64 - 1);
+        addr & mask
+    }
+
+    #[inline]
+    pub fn write_epoch(&self) -> u64 {
+        self.write_log.new_epoch
+    }
+
+    #[inline]
+    pub fn has_written_chunk(&self, addr: u64) -> bool {
+        let base = Memory::chunk_base(addr);
+        self.write_log.chunks.contains(&base)
+    }
+
     pub fn read_bytes(&mut self, addr: u64, length: usize, solver: &mut Solver) -> Vec<u8> {
         let mut data = vec![Value::Concrete(0, 0); length];
         self.read(addr, length, &mut data);
@@ -604,6 +639,9 @@ impl Memory {
         for count in 0..chunks {
             let caddr = (addr & mask) + size * count;
             let mut offset = (addr & not_mask) * (count == 0) as u64;
+            if self.write_log.chunks.insert(caddr) {
+                self.write_log.new_epoch += 1;
+            }
 
             let mem = if let Some(m) = self.mem.get_mut(&caddr) {
                 m
