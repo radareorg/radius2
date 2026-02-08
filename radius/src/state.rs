@@ -102,6 +102,41 @@ pub enum StateStatus {
     Exit,
 }
 
+#[derive(Clone)]
+pub struct WatchdogState {
+    pub step_count: u64,
+    pub last_pc: Option<u64>,
+    pub same_pc_count: usize,
+    pub pc_window: Vec<u64>,
+    pub last_window: Vec<u64>,
+    pub window_repeat_count: usize,
+    pub steps_since_progress: u64,
+    pub steps_since_new_write: u64,
+    pub last_write_epoch: u64,
+    pub exec_from_written_streak: usize,
+    pub trap_hits: HashMap<u64, usize>,
+    pub oep: Option<u64>,
+}
+
+impl Default for WatchdogState {
+    fn default() -> Self {
+        WatchdogState {
+            step_count: 0,
+            last_pc: None,
+            same_pc_count: 0,
+            pc_window: Vec::with_capacity(64),
+            last_window: Vec::with_capacity(64),
+            window_repeat_count: 0,
+            steps_since_progress: 0,
+            steps_since_new_write: 0,
+            last_write_epoch: 0,
+            exec_from_written_streak: 0,
+            trap_hits: HashMap::new(),
+            oep: None,
+        }
+    }
+}
+
 /// A program state, including memory, registers, and solver data
 #[derive(Clone)]
 pub struct State {
@@ -121,6 +156,7 @@ pub struct State {
     pub visits: HashMap<u64, usize>,
     pub pid: u64,
     pub backtrace: Vec<(u64, u64)>,
+    pub watchdog: WatchdogState,
     pub blank: bool,
     pub debug: bool,
     pub check: bool,
@@ -193,6 +229,7 @@ impl State {
             visits: HashMap::with_capacity(512),
             backtrace: Vec::with_capacity(128),
             pid: 1337, // sup3rh4x0r
+            watchdog: WatchdogState::default(),
             blank,
             debug,
             check,
@@ -269,6 +306,7 @@ impl State {
             visits: self.visits.clone(),
             backtrace: self.backtrace.clone(),
             pid: self.pid,
+            watchdog: self.watchdog.clone(),
             blank: self.blank,
             debug: self.debug,
             check: self.check,
