@@ -48,6 +48,8 @@ pub struct WatchdogConfig {
     pub pc_repeat_limit: usize,
     pub pc_window_size: usize,
     pub pc_window_repeat_limit: usize,
+    pub no_progress_steps_limit: u64,
+    pub trap_repeat_limit: usize,
 }
 
 impl Default for WatchdogConfig {
@@ -58,6 +60,8 @@ impl Default for WatchdogConfig {
             pc_repeat_limit: 0,
             pc_window_size: 0,
             pc_window_repeat_limit: 0,
+            no_progress_steps_limit: 0,
+            trap_repeat_limit: 0,
         }
     }
 }
@@ -253,6 +257,18 @@ impl Processor {
                     .unwrap()
             );
         }
+    }
+
+    fn is_trap_instruction(instr: &Instruction) -> bool {
+        let dis = instr.disasm.to_ascii_lowercase();
+        let op = instr.opcode.to_ascii_lowercase();
+        dis.starts_with("int3")
+            || dis.starts_with("int 3")
+            || dis.starts_with("ud2")
+            || dis.starts_with("hlt")
+            || op.starts_with("int3")
+            || op.starts_with("ud2")
+            || op.starts_with("hlt")
     }
 
     // perform an emulated syscall using the definitions in syscall.rs
@@ -582,6 +598,26 @@ impl Processor {
             }
         }
 
+        if self.watchdog.enabled
+            && self.watchdog.trap_repeat_limit > 0
+            && Processor::is_trap_instruction(instr)
+            && !flags.contains(&InstructionFlag::Break)
+            && !flags.contains(&InstructionFlag::Hook)
+            && !flags.contains(&InstructionFlag::ESILHook)
+            && !flags.contains(&InstructionFlag::Sim)
+            && !flags.contains(&InstructionFlag::Merge)
+            && !flags.contains(&InstructionFlag::Avoid)
+        {
+            let hits = state.watchdog.trap_hits.entry(pc).or_insert(0);
+            *hits += 1;
+            if *hits >= self.watchdog.trap_repeat_limit {
+                state.esil.pcs.clear();
+                state.esil.pcs.push(new_pc);
+                state.registers.set_pc(vc(new_pc));
+                return;
+            }
+        }
+
         //let mut new_status = status;
         let mut new_flags = flags.clone();
         if state.status == StateStatus::PostMerge && flags.contains(&InstructionFlag::Merge) {
@@ -844,6 +880,28 @@ impl Processor {
                             state.status = StateStatus::Break;
                             return vec![];
                         }
+                    }
+                }
+            }
+        }
+
+        if self.watchdog.enabled {
+            let epoch = state.memory.write_epoch();
+            if epoch != state.watchdog.last_write_epoch {
+                state.watchdog.last_write_epoch = epoch;
+                state.watchdog.steps_since_progress = 0;
+                state.watchdog.steps_since_new_write = 0;
+            } else {
+                state.watchdog.steps_since_new_write =
+                    state.watchdog.steps_since_new_write.saturating_add(1);
+                if self.watchdog.no_progress_steps_limit > 0 {
+                    state.watchdog.steps_since_progress =
+                        state.watchdog.steps_since_progress.saturating_add(1);
+                    if state.watchdog.steps_since_progress
+                        >= self.watchdog.no_progress_steps_limit
+                    {
+                        state.status = StateStatus::Break;
+                        return vec![];
                     }
                 }
             }
