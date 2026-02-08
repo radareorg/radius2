@@ -50,6 +50,8 @@ pub struct WatchdogConfig {
     pub pc_window_repeat_limit: usize,
     pub no_progress_steps_limit: u64,
     pub trap_repeat_limit: usize,
+    pub exec_from_written_streak_limit: usize,
+    pub exec_from_written_stable_steps: u64,
 }
 
 impl Default for WatchdogConfig {
@@ -62,6 +64,8 @@ impl Default for WatchdogConfig {
             pc_window_repeat_limit: 0,
             no_progress_steps_limit: 0,
             trap_repeat_limit: 0,
+            exec_from_written_streak_limit: 0,
+            exec_from_written_stable_steps: 0,
         }
     }
 }
@@ -908,6 +912,31 @@ impl Processor {
         }
 
         let new_pc = state.registers.get_pc();
+
+        if self.watchdog.enabled
+            && self.watchdog.exec_from_written_streak_limit > 0
+            && self.watchdog.exec_from_written_stable_steps > 0
+        {
+            if let Some(pc) = new_pc.as_u64() {
+                if state.memory.has_written_chunk(pc) {
+                    state.watchdog.exec_from_written_streak += 1;
+                } else {
+                    state.watchdog.exec_from_written_streak = 0;
+                }
+
+                if state.watchdog.exec_from_written_streak
+                    >= self.watchdog.exec_from_written_streak_limit
+                    && state.watchdog.steps_since_new_write
+                        >= self.watchdog.exec_from_written_stable_steps
+                {
+                    state.watchdog.oep = Some(pc);
+                    state.status = StateStatus::Break;
+                    return vec![];
+                }
+            } else {
+                state.watchdog.exec_from_written_streak = 0;
+            }
+        }
 
         if self.force && !state.esil.pcs.is_empty() {
             // we just use the pcs in state.esil.pcs
