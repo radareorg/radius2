@@ -41,6 +41,27 @@ pub enum RunMode {
     Multiple,
 }
 
+#[derive(Clone)]
+pub struct WatchdogConfig {
+    pub enabled: bool,
+    pub max_steps: u64,
+    pub pc_repeat_limit: usize,
+    pub pc_window_size: usize,
+    pub pc_window_repeat_limit: usize,
+}
+
+impl Default for WatchdogConfig {
+    fn default() -> Self {
+        WatchdogConfig {
+            enabled: false,
+            max_steps: 0,
+            pc_repeat_limit: 0,
+            pc_window_size: 0,
+            pc_window_repeat_limit: 0,
+        }
+    }
+}
+
 pub type HookMethod = fn(&mut State) -> bool;
 
 #[derive(Clone)]
@@ -67,6 +88,7 @@ pub struct Processor {
     pub color: bool,
     pub topological: bool, // execute blocks in topological sort order
     pub steps: u64,        // number of state steps
+    pub watchdog: WatchdogConfig,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -121,6 +143,7 @@ impl Processor {
             automerge,
             color,
             steps: 0, //states: vec!()
+            watchdog: WatchdogConfig::default(),
         }
     }
 
@@ -767,6 +790,13 @@ impl Processor {
     pub fn step(&mut self, state: &mut State) -> Vec<State> {
         self.steps += 1;
         state.visit();
+        if self.watchdog.enabled {
+            state.watchdog.step_count = state.watchdog.step_count.saturating_add(1);
+            if self.watchdog.max_steps > 0 && state.watchdog.step_count > self.watchdog.max_steps {
+                state.status = StateStatus::Break;
+                return vec![];
+            }
+        }
 
         let pc_allocs = 32;
         let pc_value = state.registers.get_pc();
@@ -775,6 +805,48 @@ impl Processor {
             self.execute_instruction(state, pc_val);
         } else {
             panic!("got an unexpected sym PC: {:?}", pc_value);
+        }
+
+        if self.watchdog.enabled {
+            if let Some(exec_pc) = state.esil.prev_pc.as_u64() {
+                if state.watchdog.last_pc == Some(exec_pc) {
+                    state.watchdog.same_pc_count += 1;
+                } else {
+                    state.watchdog.last_pc = Some(exec_pc);
+                    state.watchdog.same_pc_count = 1;
+                }
+
+                if self.watchdog.pc_repeat_limit > 0
+                    && state.watchdog.same_pc_count >= self.watchdog.pc_repeat_limit
+                {
+                    state.status = StateStatus::Break;
+                    return vec![];
+                }
+
+                if self.watchdog.pc_window_size > 0 {
+                    state.watchdog.pc_window.push(exec_pc);
+                    if state.watchdog.pc_window.len() > self.watchdog.pc_window_size {
+                        state.watchdog.pc_window.remove(0);
+                    }
+
+                    if state.watchdog.pc_window.len() == self.watchdog.pc_window_size {
+                        if state.watchdog.last_window == state.watchdog.pc_window {
+                            state.watchdog.window_repeat_count += 1;
+                        } else {
+                            state.watchdog.last_window = state.watchdog.pc_window.clone();
+                            state.watchdog.window_repeat_count = 1;
+                        }
+
+                        if self.watchdog.pc_window_repeat_limit > 0
+                            && state.watchdog.window_repeat_count
+                                >= self.watchdog.pc_window_repeat_limit
+                        {
+                            state.status = StateStatus::Break;
+                            return vec![];
+                        }
+                    }
+                }
+            }
         }
 
         let new_pc = state.registers.get_pc();
