@@ -396,7 +396,19 @@ impl Processor {
                         }
                         Operations::Trap => {
                             let trap = pop_concrete(state, false, false);
-                            let sys_val = state.registers.get_with_alias("SN");
+
+                            // Check if this is sBPF architecture
+                            let arch = &state.r2api.info.bin.arch;
+                            let is_sbpf = arch == "sbpf" || arch == "bpf";
+
+                            let sys_val = if is_sbpf {
+                                // For sBPF syscalls, use the trap value as syscall hash
+                                Value::Concrete(trap, 0)
+                            } else {
+                                // For other architectures, use the SN register as before
+                                state.registers.get_with_alias("SN")
+                            };
+
                             if let Some(trap_sim) = self.traps.get(&trap) {
                                 // provide syscall args
                                 let cc = state.r2api.get_syscall_cc().unwrap_or_default();
@@ -406,7 +418,7 @@ impl Processor {
                                 }
                                 let ret = trap_sim(state, &args);
                                 state.registers.set(cc.ret.as_str(), ret);
-                            }
+                            } 
                         }
                         Operations::Syscall => self.do_syscall(state),
                         _ => do_operation(state, op),

@@ -110,6 +110,64 @@ impl Registers {
             }
         }
 
+        // Add custom registers for sBPF shadow stack
+        let arch = &r2api.info.bin.arch;
+        if arch == "sbpf" || arch == "bpf" {
+            // Add sf (shadow frame counter) register - 64-bit
+            let sf_bounds = Bounds {
+                tstr: "gpr".to_string(),
+                start: 0xf000, // Use a high offset that won't collide
+                end: 0xf008,
+                size: 64,
+            };
+            let sf_val = vc(0);
+            let sf_value_index = registers.values.len();
+            registers.values.push(sf_val);
+            bounds_map.insert(sf_bounds.clone(), sf_value_index);
+
+            let sf_reg = Register {
+                reg_info: RegisterInfo {
+                    name: "sf".to_string(),
+                    r#type: 0,
+                    type_str: "gpr".to_string(),
+                    size: 64,
+                    offset: 0xf000,
+                },
+                bounds: sf_bounds,
+                value_index: sf_value_index,
+                index: registers.indexes.len(),
+            };
+            registers.indexes.push(sf_reg.clone());
+            registers.regs.insert("sf".to_string(), sf_reg);
+
+            // Add shadow (shadow stack pointer) register - 64-bit
+            let shadow_bounds = Bounds {
+                tstr: "gpr".to_string(),
+                start: 0xf008,
+                end: 0xf010,
+                size: 64,
+            };
+            let shadow_val = vc(0x500000000);
+            let shadow_value_index = registers.values.len();
+            registers.values.push(shadow_val);
+            bounds_map.insert(shadow_bounds.clone(), shadow_value_index);
+
+            let shadow_reg = Register {
+                reg_info: RegisterInfo {
+                    name: "shadow".to_string(),
+                    r#type: 0,
+                    type_str: "gpr".to_string(),
+                    size: 64,
+                    offset: 0xf008,
+                },
+                bounds: shadow_bounds,
+                value_index: shadow_value_index,
+                index: registers.indexes.len(),
+            };
+            registers.indexes.push(shadow_reg.clone());
+            registers.regs.insert("shadow".to_string(), shadow_reg);
+        }
+
         registers
     }
 

@@ -2,8 +2,9 @@ use crate::state::{StackItem, State};
 use crate::value::{vc, Value};
 use std::f64;
 
-pub const OPS: [&str; 16] = [
+pub const OPS: [&str; 20] = [
     "+", "-", "++", "--", "*", "/", "<<", ">>", "|", "&", "^", "%", "!", ">>>>", ">>>", "<<<",
+    "$>", "$>=", "$<", "$<=",
 ];
 
 pub const SIZE: u64 = 64;
@@ -22,6 +23,10 @@ pub enum Operations {
     LessThanEq,
     GreaterThan,
     GreaterThanEq,
+    SignedLessThan,
+    SignedLessThanEq,
+    SignedGreaterThan,
+    SignedGreaterThanEq,
     LeftShift,
     LogicalRightShift,
     RightShift,
@@ -130,6 +135,10 @@ impl Operations {
             "<=" => Operations::LessThanEq,
             ">" => Operations::GreaterThan,
             ">=" => Operations::GreaterThanEq,
+            "$<" => Operations::SignedLessThan,
+            "$<=" => Operations::SignedLessThanEq,
+            "$>" => Operations::SignedGreaterThan,
+            "$>=" => Operations::SignedGreaterThanEq,
             "<<" => Operations::LeftShift,
             "LSL" => Operations::LeftShift,
             "ASL" => Operations::LeftShift,
@@ -384,15 +393,33 @@ pub fn do_equal(state: &mut State, reg: StackItem, value: Value, set_esil: bool)
         let size = register.reg_info.size as usize;
         let prev = state.registers.get_value(index);
 
+        // Zero-extend the value if it's smaller than the register size
+        let extended_value = if value.is_symbolic() {
+            let value_width = value.size() as usize;
+            if value_width < size {
+                // Zero-extend symbolic value to register size
+                match &value {
+                    Value::Symbolic(bv, taint) => {
+                        Value::Symbolic(bv.uext((size - value_width) as u32), *taint)
+                    },
+                    _ => value.to_owned()
+                }
+            } else {
+                value.to_owned()
+            }
+        } else {
+            value.to_owned()
+        };
+
         if let Some(cond) = &state.condition {
             state.registers.set_value(
                 index,
                 state
                     .solver
-                    .conditional(&Value::Symbolic(cond.to_owned(), 0), &value, &prev),
+                    .conditional(&Value::Symbolic(cond.to_owned(), 0), &extended_value, &prev),
             );
         } else {
-            state.registers.set_value(index, value.to_owned());
+            state.registers.set_value(index, extended_value);
         }
 
         if set_esil {
@@ -458,19 +485,39 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
         Operations::LessThan => {
             let arg1 = pop_value(state, true, true);
             let arg2 = pop_value(state, false, true);
-            push_value(state, arg1.slt(&arg2));
+            push_value(state, arg1.ult(&arg2));
         }
         Operations::LessThanEq => {
             let arg1 = pop_value(state, true, true);
             let arg2 = pop_value(state, false, true);
-            push_value(state, arg1.slte(&arg2));
+            push_value(state, arg1.ulte(&arg2));
         }
         Operations::GreaterThan => {
             let arg1 = pop_value(state, true, true);
             let arg2 = pop_value(state, false, true);
-            push_value(state, arg1.sgt(&arg2));
+            push_value(state, arg1.ugt(&arg2));
         }
         Operations::GreaterThanEq => {
+            let arg1 = pop_value(state, true, true);
+            let arg2 = pop_value(state, false, true);
+            push_value(state, arg1.ugte(&arg2));
+        }
+        Operations::SignedLessThan => {
+            let arg1 = pop_value(state, true, true);
+            let arg2 = pop_value(state, false, true);
+            push_value(state, arg2.slt(&arg1));
+        }
+        Operations::SignedLessThanEq => {
+            let arg1 = pop_value(state, true, true);
+            let arg2 = pop_value(state, false, true);
+            push_value(state, arg2.slte(&arg1));
+        }
+        Operations::SignedGreaterThan => {
+            let arg1 = pop_value(state, true, true);
+            let arg2 = pop_value(state, false, true);
+            push_value(state, arg1.sgt(&arg2));
+        }
+        Operations::SignedGreaterThanEq => {
             let arg1 = pop_value(state, true, true);
             let arg2 = pop_value(state, false, true);
             push_value(state, arg1.sgte(&arg2));
