@@ -140,7 +140,18 @@ impl Memory {
     #[inline]
     pub fn check_permission(&self, addr: u64, length: u64, perm: char) -> bool {
         for seg in &self.segs {
-            if addr >= seg.addr && addr + length <= seg.addr + seg.size {
+            // Use checked arithmetic to prevent overflow
+            let addr_end = match addr.checked_add(length) {
+                Some(end) => end,
+                None => return false, // Address range overflows, not valid
+            };
+
+            let seg_end = match seg.addr.checked_add(seg.size) {
+                Some(end) => end,
+                None => continue, // Segment range overflows, skip this segment
+            };
+
+            if addr >= seg.addr && addr_end <= seg_end {
                 match perm {
                     'r' => return seg.read,
                     'w' => return seg.write,
@@ -509,7 +520,7 @@ impl Memory {
 
         let mut index = 0;
         for count in 0..chunks {
-            let caddr = (addr & mask) + size * count;
+            let caddr = (addr & mask).saturating_add(size.saturating_mul(count));
             let mut offset = (addr & not_mask) * (count == 0) as u64;
 
             let mem = if let Some(m) = self.mem.get(&caddr) {
@@ -602,7 +613,7 @@ impl Memory {
 
         let mut index = 0;
         for count in 0..chunks {
-            let caddr = (addr & mask) + size * count;
+            let caddr = (addr & mask).saturating_add(size.saturating_mul(count));
             let mut offset = (addr & not_mask) * (count == 0) as u64;
 
             let mem = if let Some(m) = self.mem.get_mut(&caddr) {

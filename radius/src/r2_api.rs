@@ -730,6 +730,16 @@ impl R2Api {
                 ],
                 ret: "a2".to_string(),
             }),
+            ("sbpf", _) | ("bpf", _) => Ok(CallingConvention {
+                args: vec![
+                    "r1".to_string(),
+                    "r2".to_string(),
+                    "r3".to_string(),
+                    "r4".to_string(),
+                    "r5".to_string(),
+                ],
+                ret: "r0".to_string(),
+            }),
             _ => Err("calling convention not found".to_owned()),
         }
     }
