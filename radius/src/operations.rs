@@ -23,10 +23,10 @@ pub enum Operations {
     LessThanEq,
     GreaterThan,
     GreaterThanEq,
-    SignedLessThan,
-    SignedLessThanEq,
-    SignedGreaterThan,
-    SignedGreaterThanEq,
+    UnsignedLessThan,
+    UnsignedLessThanEq,
+    UnsignedGreaterThan,
+    UnsignedGreaterThanEq,
     LeftShift,
     LogicalRightShift,
     RightShift,
@@ -135,10 +135,10 @@ impl Operations {
             "<=" => Operations::LessThanEq,
             ">" => Operations::GreaterThan,
             ">=" => Operations::GreaterThanEq,
-            "$<" => Operations::SignedLessThan,
-            "$<=" => Operations::SignedLessThanEq,
-            "$>" => Operations::SignedGreaterThan,
-            "$>=" => Operations::SignedGreaterThanEq,
+            "$<" => Operations::UnsignedLessThan,
+            "$<=" => Operations::UnsignedLessThanEq,
+            "$>" => Operations::UnsignedGreaterThan,
+            "$>=" => Operations::UnsignedGreaterThanEq,
             "<<" => Operations::LeftShift,
             "LSL" => Operations::LeftShift,
             "ASL" => Operations::LeftShift,
@@ -485,42 +485,42 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
         Operations::LessThan => {
             let arg1 = pop_value(state, true, true);
             let arg2 = pop_value(state, false, true);
-            push_value(state, arg1.ult(&arg2));
+            push_value(state, arg1.slt(&arg2));
         }
         Operations::LessThanEq => {
             let arg1 = pop_value(state, true, true);
             let arg2 = pop_value(state, false, true);
-            push_value(state, arg1.ulte(&arg2));
+            push_value(state, arg1.slte(&arg2));
         }
         Operations::GreaterThan => {
             let arg1 = pop_value(state, true, true);
             let arg2 = pop_value(state, false, true);
-            push_value(state, arg1.ugt(&arg2));
+            push_value(state, arg1.sgt(&arg2));
         }
         Operations::GreaterThanEq => {
             let arg1 = pop_value(state, true, true);
             let arg2 = pop_value(state, false, true);
-            push_value(state, arg1.ugte(&arg2));
-        }
-        Operations::SignedLessThan => {
-            let arg1 = pop_value(state, true, true);
-            let arg2 = pop_value(state, false, true);
-            push_value(state, arg2.slt(&arg1));
-        }
-        Operations::SignedLessThanEq => {
-            let arg1 = pop_value(state, true, true);
-            let arg2 = pop_value(state, false, true);
-            push_value(state, arg2.slte(&arg1));
-        }
-        Operations::SignedGreaterThan => {
-            let arg1 = pop_value(state, true, true);
-            let arg2 = pop_value(state, false, true);
-            push_value(state, arg1.sgt(&arg2));
-        }
-        Operations::SignedGreaterThanEq => {
-            let arg1 = pop_value(state, true, true);
-            let arg2 = pop_value(state, false, true);
             push_value(state, arg1.sgte(&arg2));
+        }
+        Operations::UnsignedLessThan => {
+            let arg1 = pop_value(state, true, true);
+            let arg2 = pop_value(state, false, true);
+            push_value(state, arg1.ult(&arg2));
+        }
+        Operations::UnsignedLessThanEq => {
+            let arg1 = pop_value(state, true, true);
+            let arg2 = pop_value(state, false, true);
+            push_value(state, arg1.ulte(&arg2));
+        }
+        Operations::UnsignedGreaterThan => {
+            let arg1 = pop_value(state, true, true);
+            let arg2 = pop_value(state, false, true);
+            push_value(state, arg1.ugt(&arg2));
+        }
+        Operations::UnsignedGreaterThanEq => {
+            let arg1 = pop_value(state, true, true);
+            let arg2 = pop_value(state, false, true);
+            push_value(state, arg1.ugte(&arg2));
         }
         Operations::LeftShift => {
             binary_operation!(state, <<);
