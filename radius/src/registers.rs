@@ -1,4 +1,4 @@
-use crate::r2_api::{AliasInfo, R2Api, RegisterInfo};
+use crate::r2_api::{AliasInfo, R2Api, RegisterInfo, is_sbpf_arch};
 use crate::solver::Solver;
 use crate::value::{vc, Value};
 use std::collections::HashMap;
@@ -119,8 +119,7 @@ impl Registers {
         }
 
         // Add custom registers for sBPF shadow stack
-        let arch = &r2api.info.bin.arch;
-        if arch == "sbpf" || arch == "bpf" {
+        if is_sbpf_arch(&r2api.info.bin.arch) {
             // Add sf (shadow frame counter) register - 64-bit
             let sf_bounds = Bounds {
                 tstr: "gpr".to_string(),

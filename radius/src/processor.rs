@@ -1,7 +1,7 @@
 use crate::operations::{
     do_operation, pop_concrete, pop_stack_value, pop_value, push_value, Operations, OPS,
 };
-use crate::r2_api::{hex_decode, CallingConvention, Instruction, Syscall};
+use crate::r2_api::{hex_decode, CallingConvention, Instruction, Syscall, is_sbpf_arch};
 use crate::value::{vc, Value};
 
 use crate::state::{
@@ -398,8 +398,7 @@ impl Processor {
                             let trap = pop_concrete(state, false, false);
 
                             // Check if this is sBPF architecture
-                            let arch = &state.r2api.info.bin.arch;
-                            let is_sbpf = arch == "sbpf" || arch == "bpf";
+                            let is_sbpf = is_sbpf_arch(&state.r2api.info.bin.arch);
 
                             let sys_val = if is_sbpf {
                                 // For sBPF syscalls, use the trap value as syscall hash
