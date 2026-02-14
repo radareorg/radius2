@@ -13,7 +13,7 @@ use std::{thread, time};
 pub const STACK_START: u64 = 0xfff00000;
 pub const STACK_SIZE: u64 = 0x78000 * 2;
 
-/// Check if the architecture is sBPF or BPF
+/// Check if the architecture is sBPF
 #[inline]
 pub fn is_sbpf_arch(arch: &str) -> bool {
     arch == "sbpf"
@@ -835,7 +835,7 @@ impl R2Api {
         // simple as that?
         let ret = self.ccmd("pae ret")?;
         if ret.is_empty() {
-            if is_sbpf_arch(&self.info.bin.arch) {
+            if is_sbpf_arch(&self.info.bin.arch) || self.info.bin.arch == "bpf"{
                 Ok("8,sp,+=,sp,[8],pc,=".to_owned())
             } else {
                 Err("no ret instruction".to_owned())
