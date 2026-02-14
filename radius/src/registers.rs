@@ -3,6 +3,14 @@ use crate::solver::Solver;
 use crate::value::{vc, Value};
 use std::collections::HashMap;
 
+// sBPF custom register offsets, these avoid collision with regular registers
+const SBPF_SF_REGISTER_OFFSET: u64 = 0xf000;
+const SBPF_SF_REGISTER_END: u64 = 0xf008;
+const SBPF_SHADOW_REGISTER_OFFSET: u64 = 0xf008;
+const SBPF_SHADOW_REGISTER_END: u64 = 0xf010;
+// Shadow stack base address in sBPF memory space
+const SBPF_SHADOW_STACK_BASE: u64 = 0x500000000;
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Bounds {
     tstr: String,
@@ -116,8 +124,8 @@ impl Registers {
             // Add sf (shadow frame counter) register - 64-bit
             let sf_bounds = Bounds {
                 tstr: "gpr".to_string(),
-                start: 0xf000, // Use a high offset that won't collide
-                end: 0xf008,
+                start: SBPF_SF_REGISTER_OFFSET,
+                end: SBPF_SF_REGISTER_END,
                 size: 64,
             };
             let sf_val = vc(0);
@@ -131,7 +139,7 @@ impl Registers {
                     r#type: 0,
                     type_str: "gpr".to_string(),
                     size: 64,
-                    offset: 0xf000,
+                    offset: SBPF_SF_REGISTER_OFFSET,
                 },
                 bounds: sf_bounds,
                 value_index: sf_value_index,
@@ -143,11 +151,11 @@ impl Registers {
             // Add shadow (shadow stack pointer) register - 64-bit
             let shadow_bounds = Bounds {
                 tstr: "gpr".to_string(),
-                start: 0xf008,
-                end: 0xf010,
+                start: SBPF_SHADOW_REGISTER_OFFSET,
+                end: SBPF_SHADOW_REGISTER_END,
                 size: 64,
             };
-            let shadow_val = vc(0x500000000);
+            let shadow_val = vc(SBPF_SHADOW_STACK_BASE);
             let shadow_value_index = registers.values.len();
             registers.values.push(shadow_val);
             bounds_map.insert(shadow_bounds.clone(), shadow_value_index);
@@ -158,7 +166,7 @@ impl Registers {
                     r#type: 0,
                     type_str: "gpr".to_string(),
                     size: 64,
-                    offset: 0xf008,
+                    offset: SBPF_SHADOW_REGISTER_OFFSET,
                 },
                 bounds: shadow_bounds,
                 value_index: shadow_value_index,
