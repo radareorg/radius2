@@ -5,8 +5,9 @@ use std::collections::HashMap;
 
 // sBPF custom register offsets, these avoid collision with regular registers
 const SBPF_SF_REGISTER_OFFSET: u64 = 0xf000;
-const SBPF_REGISTER_END: u64 = 0xf008;
-const SBPF_SHADOW_REGISTER_END: u64 = 0xf010;
+const SBPF_SF_REGISTER_END: u64 = SBPF_SF_REGISTER_OFFSET + 0x8;
+const SBPF_SHADOW_REGISTER_OFFSET: u64 = SBPF_SF_REGISTER_END;
+const SBPF_SHADOW_REGISTER_END: u64 = SBPF_SHADOW_REGISTER_OFFSET + 0x8;
 // Shadow stack base address in sBPF memory space
 const SBPF_SHADOW_STACK_BASE: u64 = 0x500000000;
 
