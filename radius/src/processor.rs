@@ -417,7 +417,7 @@ impl Processor {
                                 }
                                 let ret = trap_sim(state, &args);
                                 state.registers.set(cc.ret.as_str(), ret);
-                            } 
+                            }
                         }
                         Operations::Syscall => self.do_syscall(state),
                         _ => do_operation(state, op),

@@ -40,6 +40,43 @@ pub struct Registers {
 }
 
 impl Registers {
+    /// Helper to add a custom register
+    fn add_custom_register(
+        &mut self,
+        bounds_map: &mut HashMap<Bounds, usize>,
+        name: &str,
+        offset: u64,
+        end: u64,
+        initial_value: Value,
+    ) {
+        let bounds = Bounds {
+            tstr: "gpr".to_string(),
+            start: offset,
+            end,
+            size: 64,
+        };
+
+        let value_index = self.values.len();
+        self.values.push(initial_value);
+        bounds_map.insert(bounds.clone(), value_index);
+
+        let reg = Register {
+            reg_info: RegisterInfo {
+                name: name.to_string(),
+                r#type: 0,
+                type_str: "gpr".to_string(),
+                size: 64,
+                offset,
+            },
+            bounds,
+            value_index,
+            index: self.indexes.len(),
+        };
+
+        self.indexes.push(reg.clone());
+        self.regs.insert(name.to_string(), reg);
+    }
+
     pub fn new(r2api: &mut R2Api, btor: Solver, blank: bool) -> Self {
         let mut reg_info = r2api.get_registers().unwrap();
         reg_info
@@ -121,58 +158,22 @@ impl Registers {
         // Add custom registers for sBPF shadow stack
         if is_sbpf_arch(&r2api.info.bin.arch) {
             // Add sf (shadow frame counter) register - 64-bit
-            let sf_bounds = Bounds {
-                tstr: "gpr".to_string(),
-                start: SBPF_SF_REGISTER_OFFSET,
-                end: SBPF_SF_REGISTER_END,
-                size: 64,
-            };
-            let sf_val = vc(0);
-            let sf_value_index = registers.values.len();
-            registers.values.push(sf_val);
-            bounds_map.insert(sf_bounds.clone(), sf_value_index);
-
-            let sf_reg = Register {
-                reg_info: RegisterInfo {
-                    name: "sf".to_string(),
-                    r#type: 0,
-                    type_str: "gpr".to_string(),
-                    size: 64,
-                    offset: SBPF_SF_REGISTER_OFFSET,
-                },
-                bounds: sf_bounds,
-                value_index: sf_value_index,
-                index: registers.indexes.len(),
-            };
-            registers.indexes.push(sf_reg.clone());
-            registers.regs.insert("sf".to_string(), sf_reg);
+            registers.add_custom_register(
+                &mut bounds_map,
+                "sf",
+                SBPF_SF_REGISTER_OFFSET,
+                SBPF_SF_REGISTER_END,
+                vc(0),
+            );
 
             // Add shadow (shadow stack pointer) register - 64-bit
-            let shadow_bounds = Bounds {
-                tstr: "gpr".to_string(),
-                start: SBPF_SHADOW_REGISTER_OFFSET,
-                end: SBPF_SHADOW_REGISTER_END,
-                size: 64,
-            };
-            let shadow_val = vc(SBPF_SHADOW_STACK_BASE);
-            let shadow_value_index = registers.values.len();
-            registers.values.push(shadow_val);
-            bounds_map.insert(shadow_bounds.clone(), shadow_value_index);
-
-            let shadow_reg = Register {
-                reg_info: RegisterInfo {
-                    name: "shadow".to_string(),
-                    r#type: 0,
-                    type_str: "gpr".to_string(),
-                    size: 64,
-                    offset: SBPF_SHADOW_REGISTER_OFFSET,
-                },
-                bounds: shadow_bounds,
-                value_index: shadow_value_index,
-                index: registers.indexes.len(),
-            };
-            registers.indexes.push(shadow_reg.clone());
-            registers.regs.insert("shadow".to_string(), shadow_reg);
+            registers.add_custom_register(
+                &mut bounds_map,
+                "shadow",
+                SBPF_SHADOW_REGISTER_OFFSET,
+                SBPF_SHADOW_REGISTER_END,
+                vc(SBPF_SHADOW_STACK_BASE),
+            );
         }
 
         registers
