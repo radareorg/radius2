@@ -394,21 +394,27 @@ pub fn do_equal(state: &mut State, reg: StackItem, value: Value, set_esil: bool)
         let prev = state.registers.get_value(index);
 
         // Zero-extend the value if it's smaller than the register size
-        let extended_value = if value.is_symbolic() {
+        let extended_value = {
             let value_width = value.size() as usize;
             if value_width < size {
-                // Zero-extend symbolic value to register size
+                // Zero-extend value to register size
                 match &value {
                     Value::Symbolic(bv, taint) => {
                         Value::Symbolic(bv.uext((size - value_width) as u32), *taint)
                     },
-                    _ => value.to_owned()
+                    Value::Concrete(val, taint) => {
+                        // Mask concrete value to ensure it fits in the register size
+                        let mask = if size >= 64 {
+                            u64::MAX
+                        } else {
+                            (1u64 << size) - 1
+                        };
+                        Value::Concrete(val & mask, *taint)
+                    }
                 }
             } else {
                 value.to_owned()
             }
-        } else {
-            value.to_owned()
         };
 
         if let Some(cond) = &state.condition {
