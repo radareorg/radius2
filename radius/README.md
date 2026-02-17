@@ -4,23 +4,24 @@
 
 This repository is a continuation of the work from [@aemmitt-ns](https://github.com/aemmitt-ns/radius2) maintained by the [radareorg](https://github.com/radareorg) community.
 
-`radius2` is a fast symbolic execution and taint analysis framework using `radare2` that is focused on covering many different architectures and executable formats. It also strives to be easy to use and has a CLI tool that makes some reversing tasks as easy as adding a symbolic value and setting a string to reach or avoid. Reversing challenges can be solved as easily as the example below. 
-```
+<img border=0 src="./doc/images/radius2.png" alt="logo" align="left" width="200px">
+
+**radius2** is a fast symbolic execution and taint analysis framework using *radare2* that is focused on covering many different architectures and executable formats. It also strives to be easy to use and has a CLI tool that makes some reversing tasks as easy as adding a symbolic value and setting a string to reach or avoid. Reversing challenges can be solved as easily as the example below. 
+
+```console
 $ radius2 -p ais3 -s flag 184 -X sorry
-
-  flag : "ais3{I_tak3_g00d_n0t3s}"
-
+flag : "ais3{I_tak3_g00d_n0t3s}"
 ```
 
 ### Building
 
-Install radare2 with 
-```
-git clone https://github.com/radareorg/radare2.git
-radare2/sys/install.sh 
+Install radare2 from git, then Radius2 can be installed from r2pm:
+
+```console
+$ r2pm -ci radius2
 ```
 
-Install radius2 with `cargo install radius2` or include radius2 as a dependency using `radius2 = "1.0.27"`
+Or do it with `cargo install radius2` or include radius2 as a dependency using `radius2 = "1.0.27"`
 
 ### Supported Architectures
 
