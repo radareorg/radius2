@@ -600,7 +600,7 @@ impl Radius {
     ///  ## Example
     /// ```
     /// use radius2::Radius;
-    /// let mut radius = Radius::new("/bin/ls");
+    /// let mut radius = Radius::new("/bin/env");
     /// let state = radius.entry_state();
     /// let new_state = radius.run(state, 1);
     /// ```
