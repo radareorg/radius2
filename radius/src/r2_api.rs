@@ -104,10 +104,6 @@ fn blank() -> String {
     "".to_string()
 }
 
-fn zero() -> i64 {
-    0
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Segment {
     pub name: String,

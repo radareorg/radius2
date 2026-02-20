@@ -2,7 +2,6 @@ use crate::sims::format;
 use crate::sims::syscall;
 use crate::state::State;
 use crate::value::{vc, Value};
-use rand::Rng;
 
 const MAX_LEN: u64 = 8192;
 
@@ -687,7 +686,7 @@ pub fn zero(_state: &mut State, _args: &[Value]) -> Value {
     vc(0)
 }
 
-pub fn rand(state: &mut State, _args: &[Value]) -> Value {
+pub fn rand(_state: &mut State, _args: &[Value]) -> Value {
     // let r = rand::thread_rng().gen::<u64>();
     // let rand = state.symbolic_value(&format!("rand_{}", r), 64);
 
