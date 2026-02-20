@@ -62,12 +62,6 @@ jobs:
 
     steps:
     - uses: actions/checkout@v6
-    - name: Install MSYS2
-      uses: msys2/setup-msys2@v2
-      with:
-        msystem: MINGW64
-        update: true
-        install: base-devel git
     - name: Install radare2
       run: |
         choco install radare2 -y
