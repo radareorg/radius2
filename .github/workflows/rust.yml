@@ -66,9 +66,9 @@ jobs:
       run: |
         choco install radare2 -y
     - name: Build
-      run: cargo build --verbose --release
+      run: cargo build --verbose --release --no-default-features
     - name: Run tests
-      run: cargo test --workspace --verbose --release
+      run: cargo test --workspace --verbose --release --no-default-features
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
