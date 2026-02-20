@@ -11,8 +11,8 @@ env:
   R2V: 6.0.8
 
 jobs:
-  build:
-
+  build-linux:
+    name: Build (Linux)
     runs-on: ubuntu-latest
 
     steps:
@@ -31,3 +31,46 @@ jobs:
       run: cargo build --verbose --release
     - name: Run tests
       run: cargo test --workspace --verbose --release
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: radius2-linux-x86_64
+        path: target/release/radius2
+
+  build-macos:
+    name: Build (macOS)
+    runs-on: macos-latest
+
+    steps:
+    - uses: actions/checkout@v6
+    - name: Install radare2
+      run: |
+        brew install radare2
+    - name: Build
+      run: CMAKE_POLICY_VERSION_MINIMUM=3.5 cargo build --verbose --release
+    - name: Run tests
+      run: cargo test --workspace --verbose --release
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: radius2-macos-x86_64
+        path: target/release/radius2
+
+  build-windows:
+    name: Build (Windows)
+    runs-on: windows-latest
+
+    steps:
+    - uses: actions/checkout@v6
+    - name: Install radare2
+      run: |
+        choco install radare2 -y
+    - name: Build
+      run: cargo build --verbose --release
+    - name: Run tests
+      run: cargo test --workspace --verbose --release
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: radius2-windows-x86_64
+        path: target/release/radius2.exe
