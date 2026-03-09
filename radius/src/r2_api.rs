@@ -213,7 +213,6 @@ pub struct SearchResult {
     pub data: String,
 }
 
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct DisasmSearchResult {
     pub addr: u64,
@@ -516,6 +515,30 @@ pub struct R2Api {
 }
 
 impl R2Api {
+    fn escape_debug_arg(arg: &str) -> String {
+        let mut escaped = String::from("\"");
+        for ch in arg.chars() {
+            match ch {
+                '\\' | '"' => {
+                    escaped.push('\\');
+                    escaped.push(ch);
+                }
+                '\n' => escaped.push_str("\\n"),
+                '\r' => escaped.push_str("\\r"),
+                _ => escaped.push(ch),
+            }
+        }
+        escaped.push('"');
+        escaped
+    }
+
+    fn escape_debug_args(args: &[String]) -> String {
+        args.iter()
+            .map(|arg| Self::escape_debug_arg(arg))
+            .collect::<Vec<_>>()
+            .join(" ")
+    }
+
     pub fn new<T: AsRef<str>>(filename: Option<T>, opts: Option<Vec<&'static str>>) -> R2Api {
         let options = &opts.as_ref().map(|o| R2PipeSpawnOptions {
             exepath: "r2".to_owned(),
@@ -899,7 +922,8 @@ impl R2Api {
             Mode::Frida => panic!("can't enter debug from frida mode, also why would you?"),
             _ => {
                 self.mode = Mode::Debugger;
-                self.cmd(&format!("doo {};db {};dc", args.join(" "), addr))
+                let escaped_args = Self::escape_debug_args(args);
+                self.cmd(&format!("doo {};db {};dc", escaped_args, addr))
             }
         })
         .unwrap_or_default();
@@ -1207,5 +1231,22 @@ impl R2Api {
 
     pub fn close(&mut self) {
         self.r2p.lock().unwrap().close();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::R2Api;
+
+    #[test]
+    fn escape_debug_args_quotes_each_argument() {
+        let args = vec!["arg1".to_owned(), "arg 2".to_owned()];
+        assert_eq!(R2Api::escape_debug_args(&args), "\"arg1\" \"arg 2\"");
+    }
+
+    #[test]
+    fn escape_debug_args_escapes_quotes_backslashes_and_newlines() {
+        let args = vec!["a\"b\\c\nd\r".to_owned()];
+        assert_eq!(R2Api::escape_debug_args(&args), "\"a\\\"b\\\\c\\nd\\r\"");
     }
 }
