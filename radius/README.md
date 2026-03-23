@@ -1,6 +1,8 @@
 ## radius2 - fast symbolic execution with r2
 
-[![Rust](https://github.com/radareorg/radius2/actions/workflows/rust.yml/badge.svg)](https://github.com/radareorg/radius2/actions/workflows/rust.yml)
+[![Linux](https://img.shields.io/badge/Linux-passing-brightgreen.svg)](https://github.com/radareorg/radius2/actions/workflows/rust.yml)
+[![macOS](https://img.shields.io/badge/macOS-passing-brightgreen.svg)](https://github.com/radareorg/radius2/actions/workflows/rust.yml)
+[![Windows](https://img.shields.io/badge/Windows-passing-brightgreen.svg)](https://github.com/radareorg/radius2/actions/workflows/rust.yml)
 
 This repository is a continuation of the work from [@aemmitt-ns](https://github.com/aemmitt-ns/radius2) maintained by the [radareorg](https://github.com/radareorg) community.
 
