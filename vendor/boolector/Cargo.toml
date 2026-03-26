@@ -20,7 +20,7 @@ keywords = ["boolector", "smt", "ffi", "bindings"]
 license = "MIT"
 repository = "https://github.com/cdisselkoen/boolector-rs"
 [dependencies.boolector-sys]
-version = "0.7.1"
+path = "../boolector-sys"
 
 [dependencies.libc]
 version = "0.2.73"
