@@ -8,7 +8,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  R2V: 6.0.8
+  R2V: 6.1.2
 
 jobs:
   build-linux:

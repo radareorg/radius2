@@ -6,17 +6,12 @@ env:
 on:
   push:
     tags:
-      - 'v*'
+      - '[0-9]*'
 
 permissions:
   contents: write
 
 jobs:
-  wait-for-builds:
-    name: Wait for builds
-    runs-on: ubuntu-latest
-    needs: [build-linux, build-macos, build-windows]
-
   build-linux:
     name: Build (Linux)
     runs-on: ubuntu-latest
@@ -83,7 +78,7 @@ jobs:
   release:
     name: Create Release
     runs-on: ubuntu-latest
-    needs: [wait-for-builds]
+    needs: [build-linux, build-macos, build-windows]
 
     steps:
     - uses: actions/checkout@v6
