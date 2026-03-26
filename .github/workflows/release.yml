@@ -1,6 +1,7 @@
 name: Release
 
 env:
+  CMAKE_POLICY_VERSION_MINIMUM: "3.5"
   R2V: 6.0.8
 
 on:
