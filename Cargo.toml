@@ -19,7 +19,3 @@ exclude = ["vendor/boolector"]
 [profile.release]
 lto = true
 opt-level=3
-
-[patch.crates-io]
-# boolector 0.4.3 compares ftell() output against an i64 constant, which fails on Windows.
-boolector = { path = "vendor/boolector" }

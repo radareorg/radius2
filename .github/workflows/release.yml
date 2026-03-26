@@ -66,15 +66,41 @@ jobs:
         path: target/release/radius2
 
   build-windows:
-    name: Check (Windows)
+    name: Build (Windows)
     runs-on: windows-latest
 
     steps:
     - uses: actions/checkout@v6
-    - name: Check
-      # boolector-sys needs an external boolector.lib on x86_64-pc-windows-msvc.
-      # Keep Windows compile coverage without requiring an unsupported final link.
-      run: cargo check --workspace --all-targets --verbose --release
+    - name: Setup MSYS2
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW64
+        path-type: inherit
+        update: true
+        install: >-
+          base-devel
+          curl
+          git
+          mingw-w64-x86_64-gcc
+          mingw-w64-x86_64-cmake
+          patch
+
+    - name: Add Rust GNU target
+      run: rustup target add x86_64-pc-windows-gnu
+
+    - name: Build
+      shell: msys2 {0}
+      run: cargo build --package radius2 --target x86_64-pc-windows-gnu --verbose --release
+
+    - name: Package
+      shell: powershell
+      run: Compress-Archive -Path target\x86_64-pc-windows-gnu\release\radius2.exe -DestinationPath target\x86_64-pc-windows-gnu\release\radius2-windows-x86_64.zip
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v7
+      with:
+        name: radius2-windows-x86_64
+        path: target/x86_64-pc-windows-gnu/release/radius2-windows-x86_64.zip
 
   release:
     name: Create Release
@@ -94,6 +120,7 @@ jobs:
         cp artifacts/radius2-linux-x86_64/radius2 release/radius2-linux-x86_64
         cp artifacts/radius2-linux-x86_64/*.deb release/
         cp artifacts/radius2-macos-x86_64/radius2 release/radius2-macos-x86_64
+        cp artifacts/radius2-windows-x86_64/radius2-windows-x86_64.zip release/
     - name: Create GitHub Release
       uses: softprops/action-gh-release@v2
       with:
@@ -101,6 +128,7 @@ jobs:
           release/radius2-linux-x86_64
           release/*.deb
           release/radius2-macos-x86_64
+          release/radius2-windows-x86_64.zip
         name: Release ${{ github.ref_name }}
         draft: false
         prerelease: false

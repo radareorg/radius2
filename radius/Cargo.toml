@@ -13,7 +13,6 @@ readme = "README.md"
 r2pipe = "0.8.0"
 serde_json = "1.0.59"
 serde = { version = "1.0.117", features = ["derive"] }
-boolector = "0.4.3"
 clap = "2.33.3"
 rand = "0.8.4"
 colored = "2.0.0"
@@ -22,10 +21,10 @@ colored = "2.0.0"
 default = []
 
 [target.'cfg(not(windows))'.dependencies]
-boolector = { version = "0.4.3", features = ["vendor-lgl"] }
+boolector = { path = "../vendor/boolector", features = ["vendor-lgl"] }
 
 [target.'cfg(windows)'.dependencies]
-boolector = "0.4.3"
+boolector = { path = "../vendor/boolector", features = ["vendor-lgl"] }
 
 [package.metadata.docs.rs]
 no-default-features = true
