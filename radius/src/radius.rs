@@ -1,4 +1,4 @@
-pub use crate::processor::{HookMethod, Processor, RunMode};
+pub use crate::processor::{HookMethod, Processor, RunMode, WatchdogConfig};
 use crate::r2_api::{BasicBlock, FunctionInfo, Information, Instruction, R2Api, R2Result};
 use crate::state::State;
 //use crate::value::Value;
@@ -199,6 +199,11 @@ impl Radius {
             debug,
             strict,
         }
+    }
+
+    /// Replace the watchdog configuration for the main processor.
+    pub fn set_watchdog(&mut self, config: WatchdogConfig) {
+        self.processor.watchdog = config;
     }
 
     /// Initialized state at the provided function address with an initialized stack
