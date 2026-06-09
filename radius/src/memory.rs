@@ -582,7 +582,7 @@ impl Memory {
         solver.push();
         let data_u8 = data
             .iter()
-            .map(|d| solver.evalcon_to_u64(d).unwrap() as u8)
+            .map(|d| solver.evalcon_to_u64(d).unwrap_or(0) as u8)
             .collect();
         solver.pop();
         data_u8
