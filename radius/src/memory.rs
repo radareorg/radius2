@@ -647,14 +647,16 @@ impl Memory {
     // jesus this got huge
     /// Pack the bytes in `data` into a Value according to the endianness of the target
     pub fn pack(&self, data: &[Value]) -> Value {
-        let new_data = data;
-        let length = new_data.len();
+        let length = data.len();
         let mut taint = 0;
 
-        if self.endian == Endian::Big {
-            let mut new_data = data.to_owned();
-            new_data.reverse();
-        }
+        let reversed: Vec<Value>;
+        let new_data = if self.endian == Endian::Big {
+            reversed = data.iter().rev().cloned().collect();
+            &reversed[..]
+        } else {
+            data
+        };
 
         // if length > 64 bits use sym to cheat
         if length > 8 || new_data.iter().any(|x| x.is_symbolic()) {
