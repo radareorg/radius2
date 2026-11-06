@@ -84,8 +84,6 @@ pub enum Operations {
     AddressRestore,
     Swap,
     Rotate,
-    Pick,
-    ReversePick,
     Pop,
     Duplicate,
     Number,
@@ -217,8 +215,6 @@ impl Operations {
             "-F" => Operations::FloatNegate,
             "SWAP" => Operations::Swap,
             "ROT" => Operations::Rotate,
-            "PICK" => Operations::Pick,
-            "RPICK" => Operations::ReversePick,
             "POP" => Operations::Pop,
             "DUP" => Operations::Duplicate,
             "NUM" => Operations::Number,
@@ -1075,16 +1071,6 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
                 let item = state.stack.remove(len - 3);
                 state.stack.push(item);
             }
-        }
-        Operations::Pick => {
-            let n = pop_concrete(state, false, false);
-            let item = state.stack[state.stack.len() - n as usize].to_owned();
-            state.stack.push(item);
-        }
-        Operations::ReversePick => {
-            let n = pop_concrete(state, false, false);
-            let item = state.stack[n as usize].to_owned();
-            state.stack.push(item);
         }
         Operations::Pop => {
             state.stack.pop();
