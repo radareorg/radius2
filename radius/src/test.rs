@@ -375,3 +375,76 @@ fn ioscrackme() {
     println!("FLAG: {}", flag.unwrap());
     radius.r2api.close();
 }
+
+// expected values are the output of `'ae <esil>` in radare2 master (x86, 64 bits)
+#[test]
+fn esil_ops() {
+    use crate::radius::Radius;
+    use crate::state::{StackItem, State};
+    use crate::value::Value;
+
+    fn eval(radius: &mut Radius, state: &mut State, esil: &str) -> Vec<u64> {
+        radius.processor.parse_expression(state, esil);
+        let stack = std::mem::take(&mut state.stack);
+        stack
+            .into_iter()
+            .map(|item| {
+                let value = match item {
+                    StackItem::StackValue(v) => v,
+                    StackItem::StackRegister(i) => state.registers.get_value(i),
+                };
+                state.solver.evalcon_to_u64(&value).unwrap()
+            })
+            .collect()
+    }
+
+    let mut radius = Radius::new("../tests/hello");
+    let mut state = radius.blank_state();
+    let tests: &[(&str, &[u64])] = &[
+        ("16,0x81,CLZ", &[8]),
+        ("64,0,CLZ", &[64]),
+        ("0x8000000000000001,POPCNT", &[2]),
+        ("8,0x81,~", &[0xffffffffffffff81]),
+        ("0,0x81,~", &[0]),
+        ("64,0x81,~", &[0x81]),
+        ("1,2,3,ROT", &[2, 3, 1]),
+        ("0,5,/", &[0]),
+        ("0,5,%", &[0]),
+        ("0,5,~/", &[0]),
+        ("0,5,~%", &[0]),
+        ("0x8000000000000000,0xffffffffffffffff,SWAP,~/", &[0x8000000000000000]),
+        ("1,0x80000000,ASR", &[0x40000000]),
+        ("4,0x12345678,ROR", &[0x8000000001234567]),
+        ("4,0x12345678,ROL", &[0x123456780]),
+        ("0x10,0x8,<", &[1]),
+        ("0x8,0x10,<", &[0]),
+        ("0xffffffffffffffff,0,<", &[0]),
+        ("1,rax,=,0xffffffff,eax,=,0,eax,<", &[1]),
+        ("0,rax,=,0,eax,==,$z", &[1]),
+        ("0x7ff8000000000000,0x7ff8000000000000,F!=", &[1]),
+        ("0x3ff0000000000000,0x3ff0000000000000,F<=", &[1]),
+        ("0x4000000000000000,0x4008000000000000,0x3ff0000000000000,F*+", &[0x4014000000000000]),
+        ("32,0x3f800000,F2D", &[0x3ff0000000000000]),
+        ("16,0x3c00,F2D", &[0x3ff0000000000000]),
+        ("16,0x4000000000000000,D2F", &[0x4000]),
+        ("0xc3e0000000000000,D2I", &[0]),
+        ("0x1234,SETJT,$jt,$js", &[0x1234, 1]),
+        ("1,SETD,$ds", &[1]),
+        ("0x80,al,=,1,al,-=,8,$b", &[0]),
+        ("0x10,al,=,1,al,-=,4,$b", &[1]),
+        ("3,al,=,$p", &[1]),
+        ("0x100000,rbx,=,0x7f,rbx,=[1],1,rbx,+=[1],7,$o,$z,8,$b,rbx,[1]", &[1, 0, 1, 0x80]),
+        ("0x100000,rbx,=,0xaabbcc,rbx,=[3],rbx,[3]", &[0xaabbcc]),
+        ("0xff,rcx,=,8,rcx,~=,rcx", &[0xffffffffffffffff]),
+        ("1,2,TRAP,BITS,7", &[7]),
+    ];
+    for (esil, expected) in tests {
+        assert_eq!(&eval(&mut radius, &mut state, esil), expected, "{}", esil);
+    }
+
+    // symbolic operands must agree with the concrete results
+    let x = state.bv("x", 64);
+    state.assert_bv(&x._eq(&state.bvv(0x81, 64)));
+    state.registers.set("rdx", Value::Symbolic(x, 0));
+    assert_eq!(eval(&mut radius, &mut state, "16,rdx,CLZ,rdx,POPCNT"), [8, 2]);
+}

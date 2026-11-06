@@ -1,10 +1,9 @@
 use crate::state::{StackItem, State};
 use crate::value::{vc, Value};
-use std::f64;
 
-pub const OPS: [&str; 20] = [
-    "+", "-", "++", "--", "*", "/", "<<", ">>", "|", "&", "^", "%", "!", ">>>>", ">>>", "<<<",
-    "$>", "$>=", "$<", "$<=",
+pub const OPS: [&str; 21] = [
+    "+", "-", "++", "--", "*", "/", "<<", ">>", "|", "&", "^", "%", "!", "~", ">>>>", ">>>",
+    "<<<", "$>", "$>=", "$<", "$<=",
 ];
 
 pub const SIZE: u64 = 64;
@@ -60,6 +59,7 @@ pub enum Operations {
     PeekMany,
     PokeMany,
     PopCount,
+    CountLeadingZeros,
     Ceiling,
     Floor,
     Round,
@@ -70,16 +70,20 @@ pub enum Operations {
     DoubleToFloat,
     FloatToDouble,
     FloatCompare,
+    FloatNotEqual,
     FloatLessThan,
+    FloatLessThanEq,
     FloatAdd,
     FloatSubtract,
     FloatMultiply,
     FloatDivide,
+    FloatMultiplyAdd,
     NaN,
     FloatNegate,
     AddressStore,
     AddressRestore,
     Swap,
+    Rotate,
     Pick,
     ReversePick,
     Pop,
@@ -92,6 +96,12 @@ pub enum Operations {
     PrintStack,
     ToDo,
     NoOperation,
+    SetJumpTarget,
+    SetJumpTargetSet,
+    SetDelay,
+    Bits,
+    Command,
+    RegisterAlias,
 
     Print,      // Tool for cli hooks
     PrintDebug, // Tool for cli hooks
@@ -172,11 +182,13 @@ impl Operations {
             ":=" => Operations::WeakEqual,
             "[1]" => Operations::Peek(1),
             "[2]" => Operations::Peek(2),
+            "[3]" => Operations::Peek(3),
             "[4]" => Operations::Peek(4),
             "[8]" => Operations::Peek(8),
             "[16]" => Operations::Peek(16),
             "=[1]" => Operations::Poke(1),
             "=[2]" => Operations::Poke(2),
+            "=[3]" => Operations::Poke(3),
             "=[4]" => Operations::Poke(4),
             "=[8]" => Operations::Poke(8),
             "=[16]" => Operations::Poke(16),
@@ -186,7 +198,9 @@ impl Operations {
             "[n]" => Operations::PeekSize,
             "=[*]" => Operations::PokeMany,
             "[*]" => Operations::PeekMany,
+            "POPCNT" => Operations::PopCount,
             "POPCOUNT" => Operations::PopCount,
+            "CLZ" => Operations::CountLeadingZeros,
             "CEIL" => Operations::Ceiling,
             "FLOOR" => Operations::Floor,
             "ROUND" => Operations::Round,
@@ -201,11 +215,15 @@ impl Operations {
             "F-" => Operations::FloatSubtract,
             "F*" => Operations::FloatMultiply,
             "F/" => Operations::FloatDivide,
+            "F*+" => Operations::FloatMultiplyAdd,
             "F==" => Operations::FloatCompare,
+            "F!=" => Operations::FloatNotEqual,
             "F<" => Operations::FloatLessThan,
+            "F<=" => Operations::FloatLessThanEq,
             "NAN" => Operations::NaN,
             "-F" => Operations::FloatNegate,
             "SWAP" => Operations::Swap,
+            "ROT" => Operations::Rotate,
             "PICK" => Operations::Pick,
             "RPICK" => Operations::ReversePick,
             "POP" => Operations::Pop,
@@ -217,6 +235,12 @@ impl Operations {
             "GOTO" => Operations::GoTo,
             "STACK" => Operations::PrintStack,
             "TODO" => Operations::ToDo,
+            "SETJT" => Operations::SetJumpTarget,
+            "SETJTS" => Operations::SetJumpTargetSet,
+            "SETD" => Operations::SetDelay,
+            "BITS" => Operations::Bits,
+            "#!" => Operations::Command,
+            "r=" => Operations::RegisterAlias,
             "" => Operations::NoOperation,
 
             // hax for use in the cli / plugin
@@ -246,20 +270,148 @@ impl Operations {
     }
 }
 
+/// size of the top stack item, literals are as wide as asm.bits (like r_esil_get_parm_size)
 #[inline]
 pub fn get_size(state: &mut State) -> u32 {
-    let item = state.stack.pop().unwrap_or_default();
+    match state.stack.last() {
+        Some(StackItem::StackRegister(index)) => state.registers.indexes[*index].reg_info.size as u32,
+        _ => state.memory.bits as u32,
+    }
+}
 
-    let sz = match &item {
-        StackItem::StackValue(_val) => 64,
-        StackItem::StackRegister(index) => {
-            let reg = &state.registers.indexes[*index];
-            reg.reg_info.size as u32
+/// pop a value and the size of the register it came from, if any
+#[inline]
+pub fn pop_value_reg_size(state: &mut State) -> (Value, Option<usize>) {
+    let size = match state.stack.last() {
+        Some(StackItem::StackRegister(index)) => {
+            Some(state.registers.indexes[*index].reg_info.size as usize)
         }
+        _ => None,
+    };
+    // r2 ignores registers wider than 255 bits here
+    let size = size.filter(|sz| *sz > 0 && *sz <= 255);
+    (pop_value(state, false, false), size)
+}
+
+/// pop dst and src and set the flag state like r2's pushnums
+#[inline]
+pub fn pop_compare_args(state: &mut State) -> (Value, Value, usize) {
+    let (dst, dst_sz) = pop_value_reg_size(state);
+    let (src, src_sz) = pop_value_reg_size(state);
+    let sz = dst_sz.or(src_sz).unwrap_or(64);
+    state.esil.current = dst.to_owned() - src.to_owned();
+    state.esil.previous = dst.to_owned();
+    state.esil.last_sz = sz;
+    (dst, src, sz)
+}
+
+/// prepare a value for a signed comparison of `sz` bits (like r2's signed_compare_gt)
+#[inline]
+pub fn signed_sized(value: Value, sz: usize) -> Value {
+    match sz {
+        1 => value & vc(1),
+        8 | 16 | 32 => value.sext(&vc(sz as u64)),
+        _ => value,
+    }
+}
+
+/// division and modulo by zero push 0 like r2 does
+#[inline]
+pub fn div_by_zero_checked(state: &mut State, dst: Value, src: Value, op: fn(Value, Value) -> Value) -> Value {
+    match &src {
+        Value::Concrete(0, t) => Value::Concrete(0, dst.get_taint() | t),
+        Value::Concrete(_, _) => op(dst, src),
+        Value::Symbolic(_, t) => {
+            let zero = Value::Concrete(0, dst.get_taint() | t);
+            let is_zero = src.eq(&vc(0));
+            let res = op(dst, src);
+            state.solver.conditional(&is_zero, &zero, &res)
+        }
+    }
+}
+
+/// r2 float binops propagate the NaN of src first, then dst
+#[inline]
+pub fn float_nan_or(s: f64, d: f64, res: f64) -> f64 {
+    if s.is_nan() {
+        s
+    } else if d.is_nan() {
+        d
+    } else {
+        res
+    }
+}
+
+pub fn half_to_f64(h: u16) -> f64 {
+    let sign = if h & 0x8000 != 0 { -1.0 } else { 1.0 };
+    let exp = ((h >> 10) & 0x1f) as i32;
+    let frac = (h & 0x3ff) as f64;
+    match exp {
+        0 => sign * frac * 2f64.powi(-24),
+        0x1f if frac == 0.0 => sign * f64::INFINITY,
+        0x1f => f64::NAN,
+        _ => sign * (1.0 + frac / 1024.0) * 2f64.powi(exp - 15),
+    }
+}
+
+pub fn f64_to_half(v: f64) -> u16 {
+    let sign: u16 = if v.is_sign_negative() { 0x8000 } else { 0 };
+    let a = v.abs();
+    if v.is_nan() {
+        return 0x7e00;
+    } else if a >= 65520.0 {
+        return sign | 0x7c00;
+    } else if a < 2f64.powi(-14) {
+        // subnormal, rounding up to 0x400 yields the smallest normal
+        return sign | (a * 2f64.powi(24)).round_ties_even() as u16;
+    }
+    let mut e = a.log2().floor() as i32;
+    let mut m = a / 2f64.powi(e);
+    if m >= 2.0 {
+        e += 1;
+        m /= 2.0;
+    } else if m < 1.0 {
+        e -= 1;
+        m *= 2.0;
+    }
+    let mut frac = ((m - 1.0) * 1024.0).round_ties_even() as u16;
+    if frac == 1024 {
+        frac = 0;
+        e += 1;
+    }
+    if e > 15 {
+        return sign | 0x7c00;
+    }
+    sign | (((e + 15) as u16) << 10) | frac
+}
+
+/// write `value` to memory and set the flag state like r2's esil_poke_n
+pub fn do_poke(state: &mut State, addr: Value, value: Value, n: usize) {
+    let prev = if state.condition.is_some() {
+        state.memory_read_value(&addr, n)
+    } else {
+        state.memory.read_sym(&addr, n, &mut state.solver)
     };
 
-    state.stack.push(item);
-    sz
+    if let Some(cond) = &state.condition.to_owned() {
+        let cond_value = state
+            .solver
+            .conditional(&Value::Symbolic(cond.to_owned(), 0), &value, &prev);
+        state.memory_write_value(&addr, &cond_value, n);
+    } else {
+        state.memory_write_value(&addr, &value, n);
+    }
+
+    state.esil.previous = prev;
+    state.esil.current = value;
+    state.esil.last_sz = 8 * n;
+}
+
+/// read memory and push it, peeks only update the last size like r2's esil_peek_n
+pub fn do_peek(state: &mut State, addr: Value, n: usize) {
+    let val = state.memory_read_value(&addr, n);
+    push_value(state, val);
+    state.esil.last_sz = 8 * n;
 }
 
 #[inline]
@@ -381,12 +533,6 @@ pub fn pop_double(state: &mut State) -> f64 {
 }
 
 #[inline]
-pub fn pop_float(state: &mut State) -> f32 {
-    let value = pop_concrete(state, false, false);
-    f32::from_bits(value as u32)
-}
-
-#[inline]
 pub fn do_equal(state: &mut State, reg: StackItem, value: Value, set_esil: bool) {
     if let StackItem::StackRegister(index) = reg {
         let register = state.registers.indexes.get(index).unwrap();
@@ -444,21 +590,23 @@ macro_rules! binary_operation {
     };
 }
 
+// dst is on top of the stack and src below it, like r2's float ops
 macro_rules! binary_float_operation {
-    ($state:expr, $op:tt) => {
-        let t = get_stack_taint($state, 1);
-        let arg1 = pop_double($state);
-        let arg2 = pop_double($state);
-        let value = Value::Concrete(f64::to_bits(arg1 $op arg2), t);
+    ($state:expr, |$d:ident, $s:ident| $res:expr) => {
+        let t = get_stack_taint($state, 2);
+        let $d = pop_double($state);
+        let $s = pop_double($state);
+        let value = Value::Concrete(f64::to_bits(float_nan_or($s, $d, $res)), t);
         push_value($state, value);
     };
 }
 
-macro_rules! binary_method {
-    ($state:expr, $op:ident) => {
-        let arg1 = pop_value($state, false, false);
-        let arg2 = pop_value($state, false, false);
-        push_value($state, arg1.$op(arg2));
+macro_rules! float_compare {
+    ($state:expr, |$d:ident, $s:ident| $res:expr) => {
+        let t = get_stack_taint($state, 2);
+        let $d = pop_double($state);
+        let $s = pop_double($state);
+        push_value($state, Value::Concrete($res as u64, t));
     };
 }
 
@@ -483,30 +631,28 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
         Operations::Else => {}
         Operations::EndIf => {}
         Operations::Compare => {
-            let arg1 = pop_value(state, true, false);
-            let arg2 = pop_value(state, false, false);
-            state.esil.current = arg1.to_owned() - arg2;
-            state.esil.previous = arg1;
+            pop_compare_args(state);
         }
+        // signed comparisons at the size of the register operands, 'src,dst,<' is dst < src
         Operations::LessThan => {
-            let arg1 = pop_value(state, true, true);
-            let arg2 = pop_value(state, false, true);
-            push_value(state, arg1.slt(&arg2));
+            let (dst, src, sz) = pop_compare_args(state);
+            let res = signed_sized(dst, sz).slt(&signed_sized(src, sz));
+            push_value(state, res);
         }
         Operations::LessThanEq => {
-            let arg1 = pop_value(state, true, true);
-            let arg2 = pop_value(state, false, true);
-            push_value(state, arg1.slte(&arg2));
+            let (dst, src, sz) = pop_compare_args(state);
+            let res = signed_sized(dst, sz).slte(&signed_sized(src, sz));
+            push_value(state, res);
         }
         Operations::GreaterThan => {
-            let arg1 = pop_value(state, true, true);
-            let arg2 = pop_value(state, false, true);
-            push_value(state, arg1.sgt(&arg2));
+            let (dst, src, sz) = pop_compare_args(state);
+            let res = signed_sized(dst, sz).sgt(&signed_sized(src, sz));
+            push_value(state, res);
         }
         Operations::GreaterThanEq => {
-            let arg1 = pop_value(state, true, true);
-            let arg2 = pop_value(state, false, true);
-            push_value(state, arg1.sgte(&arg2));
+            let (dst, src, sz) = pop_compare_args(state);
+            let res = signed_sized(dst, sz).sgte(&signed_sized(src, sz));
+            push_value(state, res);
         }
         Operations::UnsignedLessThan => {
             let arg1 = pop_value(state, true, true);
@@ -535,7 +681,11 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
             binary_operation!(state, >>);
         }
         Operations::RightShift => {
-            let sz = get_size(state);
+            let is_reg = matches!(state.stack.last(), Some(StackItem::StackRegister(_)));
+            let sz = match get_size(state) {
+                sz if is_reg || sz == 32 => sz,
+                _ => 64,
+            };
             let arg1 = pop_value(state, false, true);
             let arg2 = pop_value(state, false, true);
             push_value(state, arg1.asr(arg2, sz));
@@ -556,18 +706,18 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
             let arg1 = pop_value(state, false, false);
             let arg2 = pop_concrete(state, false, false);
 
-            match arg1 {
+            let val = match arg1 {
+                _ if arg2 > 63 => arg1,
+                Value::Concrete(_, t) | Value::Symbolic(_, t) if arg2 == 0 => Value::Concrete(0, t),
                 Value::Concrete(val1, t) => {
-                    let shift = (64 - arg2) as i64;
-                    let val = Value::Concrete(((val1 << shift) as i64 >> shift) as u64, t);
-                    push_value(state, val);
+                    let shift = 64 - arg2;
+                    Value::Concrete(((val1 << shift) as i64 >> shift) as u64, t)
                 }
                 Value::Symbolic(val1, t) => {
-                    let val =
-                        Value::Symbolic(val1.slice((arg2 - 1) as u32, 0).sext(64 - arg2 as u32), t);
-                    push_value(state, val);
+                    Value::Symbolic(val1.slice((arg2 - 1) as u32, 0).sext(64 - arg2 as u32), t)
                 }
-            }
+            };
+            push_value(state, val);
         }
         Operations::And => {
             binary_operation!(state, &);
@@ -637,17 +787,30 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
             //println!("{:?} {:?} {:?}", arg1, arg2, arg3);
             push_value(state, ((arg2 << vc(64)) + arg1) % arg3);
         }
+        // division and modulo by zero push 0
         Operations::Divide => {
-            binary_operation!(state, /);
+            let arg1 = pop_value(state, false, false);
+            let arg2 = pop_value(state, false, false);
+            let res = div_by_zero_checked(state, arg1, arg2, |a, b| a / b);
+            push_value(state, res);
         }
         Operations::Modulo => {
-            binary_operation!(state, %);
+            let arg1 = pop_value(state, false, false);
+            let arg2 = pop_value(state, false, false);
+            let res = div_by_zero_checked(state, arg1, arg2, |a, b| a % b);
+            push_value(state, res);
         }
         Operations::SignedDivide => {
-            binary_method!(state, sdiv);
+            let arg1 = pop_value(state, false, false);
+            let arg2 = pop_value(state, false, false);
+            let res = div_by_zero_checked(state, arg1, arg2, Value::sdiv);
+            push_value(state, res);
         }
         Operations::SignedModulo => {
-            binary_method!(state, srem);
+            let arg1 = pop_value(state, false, false);
+            let arg2 = pop_value(state, false, false);
+            let res = div_by_zero_checked(state, arg1, arg2, Value::srem);
+            push_value(state, res);
         }
         Operations::Not => {
             let arg1 = pop_value(state, false, false);
@@ -673,100 +836,34 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
         }
         Operations::Peek(n) => {
             let addr = pop_value(state, false, false);
-
-            let val = state.memory_read_value(&addr, *n);
-            state.esil.current = val.to_owned();
-            push_value(state, val);
-
-            state.esil.previous = addr;
-            state.esil.last_sz = 8 * (*n);
+            do_peek(state, addr, *n);
         }
         Operations::Poke(n) => {
             let addr = pop_value(state, false, false);
             let value = pop_value(state, false, false);
-
-            if let Some(cond) = &state.condition.to_owned() {
-                let prev = state.memory_read_value(&addr, *n);
-                state.memory_write_value(
-                    &addr,
-                    &state
-                        .solver
-                        .conditional(&Value::Symbolic(cond.to_owned(), 0), &value, &prev),
-                    *n,
-                );
-            } else {
-                state.memory_write_value(&addr, &value, *n);
-            }
-
-            //state.memory.write_value(addr, value, n);
-            state.esil.previous = addr;
-            state.esil.last_sz = 8 * (*n);
+            do_poke(state, addr, value, *n);
         }
         Operations::PeekBits => {
             let n = (state.memory.bits / 8) as usize;
             let addr = pop_value(state, false, false);
-
-            let val = state.memory_read_value(&addr, n);
-            state.esil.current = val.to_owned();
-            push_value(state, val);
-
-            state.esil.previous = addr;
-            state.esil.last_sz = 8 * n;
+            do_peek(state, addr, n);
         }
         Operations::PokeBits => {
             let n = (state.memory.bits / 8) as usize;
             let addr = pop_value(state, false, false);
             let value = pop_value(state, false, false);
-
-            if let Some(cond) = &state.condition.to_owned() {
-                let prev = state.memory_read_value(&addr, n);
-                state.memory_write_value(
-                    &addr,
-                    &state
-                        .solver
-                        .conditional(&Value::Symbolic(cond.to_owned(), 0), &value, &prev),
-                    n,
-                );
-            } else {
-                state.memory_write_value(&addr, &value, n);
-            }
-
-            //state.memory.write_value(addr, value, n);
-            state.esil.previous = addr;
-            state.esil.last_sz = 8 * n;
+            do_poke(state, addr, value, n);
         }
         Operations::PeekSize => {
             let n = pop_concrete(state, false, false) as usize;
             let addr = pop_value(state, false, false);
-
-            let val = state.memory_read_value(&addr, n);
-            state.esil.current = val.to_owned();
-            push_value(state, val);
-
-            state.esil.previous = addr;
-            state.esil.last_sz = 8 * n;
+            do_peek(state, addr, n);
         }
         Operations::PokeSize => {
             let n = pop_concrete(state, false, false) as usize;
             let addr = pop_value(state, false, false);
             let value = pop_value(state, false, false);
-
-            if let Some(cond) = &state.condition.to_owned() {
-                let prev = state.memory_read_value(&addr, n);
-                state.memory_write_value(
-                    &addr,
-                    &state
-                        .solver
-                        .conditional(&Value::Symbolic(cond.to_owned(), 0), &value, &prev),
-                    n,
-                );
-            } else {
-                state.memory_write_value(&addr, &value, n);
-            }
-
-            //state.memory.write_value(addr, value, n);
-            state.esil.previous = addr;
-            state.esil.last_sz = 8 * n;
+            do_poke(state, addr, value, n);
         }
         Operations::PeekMany => {
             let mut addr = pop_value(state, false, false);
@@ -815,9 +912,34 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
                 Value::Symbolic(val, t) => {
                     let mut sym_val = state.bvv(0, 64);
                     for i in 0..val.get_width() {
-                        sym_val = sym_val.add(&val.slice(i + 1, i).uext(63));
+                        sym_val = sym_val.add(&val.slice(i, i).uext(63));
                     }
                     push_value(state, Value::Symbolic(sym_val, t));
+                }
+            }
+        }
+        // 'w,x,CLZ' leading zeros of x in its low w bits, w if x is 0
+        Operations::CountLeadingZeros => {
+            let arg1 = pop_value(state, false, false);
+            let width = pop_concrete(state, false, false).min(64);
+            let mask = if width >= 64 { u64::MAX } else { (1 << width) - 1 };
+            match arg1 & vc(mask) {
+                Value::Concrete(val, t) => {
+                    let clz = if val != 0 {
+                        val.leading_zeros() as u64 - (64 - width)
+                    } else {
+                        width
+                    };
+                    push_value(state, Value::Concrete(clz, t));
+                }
+                Value::Symbolic(val, t) => {
+                    // the highest set bit wins as it is checked last
+                    let mut clz = state.bvv(width, 64);
+                    for i in 0..width as u32 {
+                        let bit_clz = state.bvv(width - 1 - i as u64, 64);
+                        clz = val.slice(i, i).cond_bv(&bit_clz, &clz);
+                    }
+                    push_value(state, Value::Symbolic(clz, t));
                 }
             }
         }
@@ -844,7 +966,12 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
         Operations::DoubleToInt => {
             let t = get_stack_taint(state, 1);
             let arg1 = pop_double(state);
-            push_value(state, Value::Concrete(arg1 as u64, t));
+            let value = if arg1 > i64::MIN as f64 && arg1 < i64::MAX as f64 {
+                arg1 as i64 as u64
+            } else {
+                0
+            };
+            push_value(state, Value::Concrete(value, t));
         }
         Operations::SignedToDouble => {
             let t = get_stack_taint(state, 1);
@@ -857,59 +984,69 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
             let arg1 = pop_concrete(state, false, false);
             push_value(state, Value::Concrete(f64::to_bits(arg1 as f64), t));
         }
+        // 'size,value,F2D' and 'size,value,D2F'
         Operations::FloatToDouble => {
             let val = pop_value(state, false, false);
-            push_value(state, val.to_owned());
-
-            let arg1 = pop_float(state);
             let size = pop_concrete(state, false, false);
+            let t = val.get_taint();
+            push_value(state, val);
+            let raw = pop_concrete(state, false, false);
 
-            // i hate this but this is how I wrote r2
-            // so i have only myself to blame
-            let value = if size != 64 {
-                Value::Concrete(f64::to_bits(arg1 as f64), val.get_taint())
-            } else {
-                val
+            let value = match size {
+                32 => Value::Concrete(f64::to_bits(f32::from_bits(raw as u32) as f64), t),
+                16 => Value::Concrete(f64::to_bits(half_to_f64(raw as u16)), t),
+                _ => Value::Concrete(raw, t),
             };
             push_value(state, value);
         }
         Operations::DoubleToFloat => {
             let t = get_stack_taint(state, 1);
-
             let arg1 = pop_double(state);
             let size = pop_concrete(state, false, false);
 
-            // these casts will need casts when i'm done with em
-            let value = if size != 64 {
-                Value::Concrete(f32::to_bits(arg1 as f32) as u64, t)
-            } else {
-                Value::Concrete(f64::to_bits(arg1), t)
+            let value = match size {
+                32 => f32::to_bits(arg1 as f32) as u64,
+                16 => f64_to_half(arg1) as u64,
+                _ => f64::to_bits(arg1),
             };
-            push_value(state, value);
+            push_value(state, Value::Concrete(value, t));
         }
         Operations::FloatAdd => {
-            binary_float_operation!(state, +);
+            binary_float_operation!(state, |d, s| s + d);
         }
         Operations::FloatSubtract => {
-            binary_float_operation!(state, -);
+            binary_float_operation!(state, |d, s| d - s);
         }
         Operations::FloatMultiply => {
-            binary_float_operation!(state, *);
+            binary_float_operation!(state, |d, s| s * d);
         }
         Operations::FloatDivide => {
-            binary_float_operation!(state, /);
+            binary_float_operation!(state, |d, s| d / s);
+        }
+        // 'a,n,m,F*+' is m * n + a
+        Operations::FloatMultiplyAdd => {
+            let t = get_stack_taint(state, 3);
+            let m = pop_double(state);
+            let n = pop_double(state);
+            let a = pop_double(state);
+            let res = if a.is_nan() {
+                a
+            } else {
+                float_nan_or(m, n, m.mul_add(n, a))
+            };
+            push_value(state, Value::Concrete(f64::to_bits(res), t));
         }
         Operations::FloatCompare => {
-            let t = get_stack_taint(state, 2);
-            let arg1 = pop_double(state);
-            let arg2 = pop_double(state);
-            push_value(state, Value::Concrete((arg1 - arg2 == 0.0) as u64, t));
+            float_compare!(state, |d, s| s == d);
+        }
+        Operations::FloatNotEqual => {
+            float_compare!(state, |d, s| s != d);
         }
         Operations::FloatLessThan => {
-            let t = get_stack_taint(state, 2);
-            let arg1 = pop_double(state);
-            let arg2 = pop_double(state);
-            push_value(state, Value::Concrete((arg1 < arg2) as u64, t));
+            float_compare!(state, |d, s| d < s);
+        }
+        Operations::FloatLessThanEq => {
+            float_compare!(state, |d, s| d <= s);
         }
         Operations::NaN => {
             let t = get_stack_taint(state, 1);
@@ -926,6 +1063,14 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
             let arg2 = state.stack.pop().unwrap();
             state.stack.push(arg1);
             state.stack.push(arg2);
+        }
+        // rotate the third element to the top: [x,y,z] -> [y,z,x]
+        Operations::Rotate => {
+            let len = state.stack.len();
+            if len >= 3 {
+                let item = state.stack.remove(len - 3);
+                state.stack.push(item);
+            }
         }
         Operations::Pick => {
             let n = pop_concrete(state, false, false);
@@ -961,6 +1106,23 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
         Operations::Repeat => {}
         Operations::GoTo => {}
         Operations::NoOperation => {}
+        Operations::SetJumpTarget => {
+            state.esil.jump_target = pop_value(state, false, false);
+            state.esil.jump_target_set = 1;
+        }
+        Operations::SetJumpTargetSet => {
+            state.esil.jump_target_set = pop_concrete(state, false, false);
+        }
+        Operations::SetDelay => {
+            state.esil.delay = pop_concrete(state, false, false);
+        }
+        Operations::Bits | Operations::Command => {
+            state.stack.pop();
+        }
+        Operations::RegisterAlias => {
+            state.stack.pop();
+            state.stack.pop();
+        }
 
         Operations::Print => {
             let value = pop_value(state, false, false);
@@ -1031,7 +1193,7 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
 
         Operations::Zero => {
             let cur = &state.esil.current;
-            let mask = Value::Concrete(genmask((state.esil.last_sz - 1) as u64), 0);
+            let mask = Value::Concrete(genmask(state.esil.last_sz.saturating_sub(1) as u64), 0);
             let zf = !(cur.and(&mask));
             push_value(state, zf);
         }
@@ -1044,9 +1206,10 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
             let cf = cur.and(&mask).ult(&old.and(&mask));
             push_value(state, cf);
         }
+        // borrow from bit x is checked at bit x-1 (mod 64)
         Operations::Borrow => {
             let bits = pop_concrete(state, false, false);
-            let mask = Value::Concrete(genmask(bits & 0x3f), 0);
+            let mask = Value::Concrete(genmask((bits + 0x3f) & 0x3f), 0);
             let cur = &state.esil.current;
             let old = &state.esil.previous;
 
@@ -1055,7 +1218,7 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
         }
         Operations::Parity => match &state.esil.current {
             Value::Concrete(val, t) => {
-                let pf = Value::Concrete(!((val & 0xff).count_ones() % 2) as u64, *t);
+                let pf = Value::Concrete(((val & 0xff).count_ones() % 2 == 0) as u64, *t);
                 push_value(state, pf);
             }
             Value::Symbolic(_val, _t) => {
@@ -1084,19 +1247,23 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
             push_value(state, of);
         }
         Operations::S => {
-            let size = pop_value(state, false, false);
-            let cur = state.esil.current.to_owned();
-            let value = (cur >> size) & Value::Concrete(1, 0);
+            let size = pop_concrete(state, false, false);
+            let value = if size > 63 {
+                vc(0)
+            } else {
+                (state.esil.current.to_owned() >> vc(size)) & vc(1)
+            };
             push_value(state, value);
         }
         Operations::Ds => {
-            let cur = state.esil.current.to_owned();
-            let sz = Value::Concrete(state.esil.last_sz as u64, 0);
-            let ds = (cur >> sz) & Value::Concrete(1, 0);
-            push_value(state, ds);
+            push_value(state, vc(state.esil.delay));
         }
-        Operations::JumpTarget => {}
-        Operations::Js => {}
+        Operations::JumpTarget => {
+            push_value(state, state.esil.jump_target.to_owned());
+        }
+        Operations::Js => {
+            push_value(state, vc(state.esil.jump_target_set));
+        }
         Operations::R => {
             push_value(state, Value::Concrete(64 >> 3, 0));
         }
