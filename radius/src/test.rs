@@ -376,6 +376,31 @@ fn ioscrackme() {
     radius.r2api.close();
 }
 
+#[test]
+fn register_offsets() {
+    use crate::r2_api::RegisterInfo;
+
+    // Released radare2 writes negative offsets as u64, while master writes i64.
+    for (offset, expected) in [
+        ("0", 0),
+        ("640", 640),
+        ("-1", u64::MAX),
+        ("9223372036854775808", 1u64 << 63),
+        ("18446744073709551615", u64::MAX),
+    ] {
+        let json = format!(
+            r#"{{"name":"riz","type":0,"type_str":"gpr","size":64,"offset":{}}}"#,
+            offset
+        );
+        let reg: RegisterInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(reg.offset, expected, "offset = {}", offset);
+
+        let json = serde_json::to_string(&reg).unwrap();
+        let reg: RegisterInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(reg.offset, expected);
+    }
+}
+
 // expected values are the output of `'ae <esil>` in radare2 master (x86, 64 bits)
 #[test]
 fn esil_ops() {
