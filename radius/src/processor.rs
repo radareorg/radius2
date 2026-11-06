@@ -645,35 +645,91 @@ impl Processor {
             state.registers.set_pc(pc_val);
         }
 
+        // a delayed branch is taken after its delay slot executes
+        let in_delay = !is_zero(&state.esil.delay);
         if !skip {
             if state.strict && instr.disasm == "invalid" {
                 //panic!("Executed invalid instruction");
                 state.set_inactive();
             } else {
                 self.parse(state, words);
+                if in_delay {
+                    self.resolve_delay(state);
+                }
             }
         }
+        let delay_pending = !in_delay && !is_zero(&state.esil.delay);
 
         if instr.type_num == RETN_TYPE {
-            if state.backtrace.is_empty() && new_flags.is_empty() {
-                // try to avoid returning outside valid context
-                if let Value::Concrete(v, _) = state.registers.get_pc() {
-                    if v == 0 || !state.memory.check_permission(v, 1, 'x') {
-                        // if it looks invalid
-                        let avoid = !self.breakpoints.is_empty() || (!self.automerge && !self.esil_hooks.is_empty());
-                        if  avoid {
-                            state.status = StateStatus::Inactive;
-                        } else {
-                            // break if there are no other breakpoints/hooks
-                            state.status = StateStatus::Break;
-                        }
+            if delay_pending {
+                state.esil.delayed_ret = Some(new_flags.is_empty());
+            } else {
+                self.check_ret(state, new_flags.is_empty());
+            }
+        } else if self.automerge && instr.type_num < 2 {
+            if delay_pending {
+                state.esil.delayed_merge = true;
+            } else {
+                state.status = StateStatus::Merge;
+            }
+        }
+    }
+
+    fn check_ret(&self, state: &mut State, no_flags: bool) {
+        if state.backtrace.is_empty() && no_flags {
+            // try to avoid returning outside valid context
+            if let Value::Concrete(v, _) = state.registers.get_pc() {
+                if v == 0 || !state.memory.check_permission(v, 1, 'x') {
+                    // if it looks invalid
+                    let avoid = !self.breakpoints.is_empty() || (!self.automerge && !self.esil_hooks.is_empty());
+                    if  avoid {
+                        state.status = StateStatus::Inactive;
+                    } else {
+                        // break if there are no other breakpoints/hooks
+                        state.status = StateStatus::Break;
                     }
                 }
-            } else {
-                state.backtrace.pop();
             }
-        } else if self.automerge && instr.type_num < 2 { 
-            state.status = StateStatus::Merge;
+        } else {
+            state.backtrace.pop();
+        }
+    }
+
+    /// count down the delay and jump to the target when it reaches 0, like r_esil_parse
+    pub fn resolve_delay(&self, state: &mut State) {
+        let delay = state.esil.delay.to_owned();
+        let jump_target_set = state.esil.jump_target_set.to_owned();
+        let jump_target = state.esil.jump_target.to_owned();
+
+        let pending = !delay.eq(&vc(0));
+        let new_delay = state.solver.conditional(&pending, &(delay - vc(1)), &vc(0));
+        let take = pending & new_delay.eq(&vc(0)) & !jump_target_set.eq(&vc(0));
+
+        let pc = state.registers.get_pc();
+        let new_pc = state.solver.conditional(&take, &jump_target, &pc);
+        if new_pc.is_symbolic() {
+            // give step the candidates instead of evaluating the pc
+            state.esil.pcs.clear();
+            if let (Some(target), Some(fallthrough)) = (jump_target.as_u64(), pc.as_u64()) {
+                state.esil.pcs.push(target);
+                state.esil.pcs.push(fallthrough);
+            }
+        }
+        state.registers.set_pc(new_pc);
+        state.esil.jump_target_set = state.solver.conditional(&take, &vc(0), &jump_target_set);
+        // a symbolic branch leaves a symbolic delay that is 0 on every path after the slot
+        state.esil.delay = if new_delay.is_symbolic() && !state.check(&!new_delay.eq(&vc(0))) {
+            vc(0)
+        } else {
+            new_delay
+        };
+
+        if is_zero(&state.esil.delay) {
+            if let Some(no_flags) = state.esil.delayed_ret.take() {
+                self.check_ret(state, no_flags);
+            } else if std::mem::take(&mut state.esil.delayed_merge) {
+                state.status = StateStatus::Merge;
+            }
         }
     }
 
@@ -979,4 +1035,9 @@ impl Processor {
             self.merges.insert(pc, state);
         }
     }
+}
+
+#[inline]
+fn is_zero(value: &Value) -> bool {
+    matches!(value, Value::Concrete(0, _))
 }

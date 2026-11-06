@@ -385,6 +385,17 @@ pub fn f64_to_half(v: f64) -> u16 {
     sign | (((e + 15) as u16) << 10) | frac
 }
 
+/// `value` if the current esil condition holds, `prev` otherwise
+#[inline]
+pub fn conditional_set(state: &State, value: Value, prev: Value) -> Value {
+    match &state.condition {
+        Some(cond) => state
+            .solver
+            .conditional(&Value::Symbolic(cond.to_owned(), 0), &value, &prev),
+        None => value,
+    }
+}
+
 /// write `value` to memory and set the flag state like r2's esil_poke_n
 pub fn do_poke(state: &mut State, addr: Value, value: Value, n: usize) {
     let prev = if state.condition.is_some() {
@@ -1106,15 +1117,23 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
         Operations::Repeat => {}
         Operations::GoTo => {}
         Operations::NoOperation => {}
+        // these may run under a symbolic condition, like register writes
         Operations::SetJumpTarget => {
-            state.esil.jump_target = pop_value(state, false, false);
-            state.esil.jump_target_set = 1;
+            let target = pop_value(state, false, false);
+            let prev = state.esil.jump_target.to_owned();
+            state.esil.jump_target = conditional_set(state, target, prev);
+            let prev = state.esil.jump_target_set.to_owned();
+            state.esil.jump_target_set = conditional_set(state, vc(1), prev);
         }
         Operations::SetJumpTargetSet => {
-            state.esil.jump_target_set = pop_concrete(state, false, false);
+            let value = pop_value(state, false, false);
+            let prev = state.esil.jump_target_set.to_owned();
+            state.esil.jump_target_set = conditional_set(state, value, prev);
         }
         Operations::SetDelay => {
-            state.esil.delay = pop_concrete(state, false, false);
+            let value = pop_value(state, false, false);
+            let prev = state.esil.delay.to_owned();
+            state.esil.delay = conditional_set(state, value, prev);
         }
         Operations::Bits | Operations::Command => {
             state.stack.pop();
@@ -1256,13 +1275,13 @@ pub fn do_operation(state: &mut State, operation: &Operations) {
             push_value(state, value);
         }
         Operations::Ds => {
-            push_value(state, vc(state.esil.delay));
+            push_value(state, state.esil.delay.to_owned());
         }
         Operations::JumpTarget => {
             push_value(state, state.esil.jump_target.to_owned());
         }
         Operations::Js => {
-            push_value(state, vc(state.esil.jump_target_set));
+            push_value(state, state.esil.jump_target_set.to_owned());
         }
         Operations::R => {
             push_value(state, Value::Concrete(64 >> 3, 0));
