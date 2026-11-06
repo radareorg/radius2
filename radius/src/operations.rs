@@ -1,9 +1,9 @@
 use crate::state::{StackItem, State};
 use crate::value::{vc, Value};
 
-pub const OPS: [&str; 21] = [
-    "+", "-", "++", "--", "*", "/", "<<", ">>", "|", "&", "^", "%", "!", "~", ">>>>", ">>>",
-    "<<<", "$>", "$>=", "$<", "$<=",
+pub const OPS: [&str; 18] = [
+    "+", "-", "++", "--", "*", "/", "<<", ">>", "|", "&", "^", "%", "!", "~", "$>", "$>=", "$<",
+    "$<=",
 ];
 
 pub const SIZE: u64 = 64;
@@ -151,17 +151,12 @@ impl Operations {
             "$>=" => Operations::UnsignedGreaterThanEq,
             "<<" => Operations::LeftShift,
             "LSL" => Operations::LeftShift,
-            "ASL" => Operations::LeftShift,
             ">>" => Operations::LogicalRightShift,
             "LSR" => Operations::LogicalRightShift,
-            ">>>>" => Operations::RightShift,
             "ASR" => Operations::RightShift,
-            "<<<" => Operations::LeftRotation,
             "ROL" => Operations::LeftRotation,
-            ">>>" => Operations::RightRotation,
             "ROR" => Operations::RightRotation,
             "~" => Operations::SignExtend,
-            "SIGN" => Operations::SignExtend,
             "&" => Operations::And,
             "|" => Operations::Or,
             "^" => Operations::Xor,
@@ -199,7 +194,6 @@ impl Operations {
             "=[*]" => Operations::PokeMany,
             "[*]" => Operations::PeekMany,
             "POPCNT" => Operations::PopCount,
-            "POPCOUNT" => Operations::PopCount,
             "CLZ" => Operations::CountLeadingZeros,
             "CEIL" => Operations::Ceiling,
             "FLOOR" => Operations::Floor,
@@ -207,7 +201,6 @@ impl Operations {
             "SQRT" => Operations::SquareRoot,
             "D2I" => Operations::DoubleToInt,
             "I2D" => Operations::SignedToDouble,
-            "S2D" => Operations::SignedToDouble,
             "U2D" => Operations::UnsignedToDouble,
             "F2D" => Operations::FloatToDouble,
             "D2F" => Operations::DoubleToFloat,
