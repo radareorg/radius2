@@ -262,8 +262,8 @@ Instead of placing breakpoints or avoidpoints, this example hooks the address `0
  >=      compare bigger for or equal
  >>=     shr ax, bx => bx,ax,>>=  # shift right
  <<=     shl ax, bx => bx,ax,<<=  # shift left
- >>>=    ror ax, bx => bx,ax,>>>=  # rotate right
- <<<=    rol ax, bx => bx,ax,<<<=  # rotate left
+ ROR     ror ax, bx => bx,ax,ROR,ax,=  # rotate right
+ ROL     rol ax, bx => bx,ax,ROL,ax,=  # rotate left
  ?{      if popped value != 0 run the block until }
  POP     drops last element in the esil stack
  DUP     duplicate last value in stack
