@@ -135,7 +135,13 @@ pub struct RegisterInfo {
     pub r#type: u64,
     pub type_str: String,
     pub size: u64,
+    // zero registers like riz have an offset of -1
+    #[serde(deserialize_with = "deserialize_offset")]
     pub offset: u64,
+}
+
+fn deserialize_offset<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<u64, D::Error> {
+    Ok(i64::deserialize(deserializer)? as u64)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
