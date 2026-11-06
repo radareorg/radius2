@@ -44,6 +44,21 @@ pub fn cond_value(cond: &BitVec, v1: Value, v2: Value) -> BitVec {
     )
 }
 
+#[inline]
+fn rot_mask(sz: u32) -> u64 {
+    if sz >= 64 {
+        u64::MAX
+    } else {
+        (1 << sz) - 1
+    }
+}
+
+/// value masked to `sz` bits and rotation amount taken mod `sz` like r2's esil_ror
+#[inline]
+fn rot_args(a: u64, b: u64, sz: u32) -> (u64, u64) {
+    (a & rot_mask(sz), b & (sz as u64 - 1))
+}
+
 macro_rules! binary_ops {
     ($self:expr, $rhs:expr, $method:ident, $op:tt) => {
         match ($self, $rhs) {
@@ -404,11 +419,17 @@ impl Value {
             (Value::Concrete(a, t1), Value::Concrete(b, t2)) => {
                 let shift = 64 - sz as i64;
                 let sign_ext = ((a as i64) << shift) >> shift;
-                Value::Concrete(((sign_ext as i64) >> (b as i64)) as u64, t1 | t2)
+                Value::Concrete((sign_ext >> b.min(63)) as u64, t1 | t2)
             }
             (Value::Symbolic(a, t1), Value::Concrete(b, t2)) => {
-                let bv = make_bv(&a, b, log2(sz));
-                Value::Symbolic(a.slice(sz - 1, 0).sra(&bv), t1 | t2)
+                // shifting by more than the size just fills with the sign
+                let bv = make_bv(&a, b.min(sz as u64 - 1), log2(sz));
+                let res = a.slice(sz - 1, 0).sra(&bv);
+                if sz < 64 {
+                    Value::Symbolic(res.sext(64 - sz), t1 | t2)
+                } else {
+                    Value::Symbolic(res, t1 | t2)
+                }
             }
             (Value::Concrete(a, t1), Value::Symbolic(b, t2)) => {
                 let bv = make_bv(&b, a, sz);
@@ -424,14 +445,12 @@ impl Value {
     pub fn ror(self, rhs: Value, sz: u32) -> Value {
         match (self, rhs) {
             (Value::Concrete(a, t1), Value::Concrete(b, t2)) => {
-                // uhhh
-                let rot = (a & ((1 << sz) - 1)).rotate_right(b as u32);
-                let mask = ((1 << b) - 1) << (64 - b);
-                let val = rot - (rot & mask) + ((rot & mask) >> (64 - sz as u64));
-                Value::Concrete(val, t1 | t2)
+                let (a, b) = rot_args(a, b, sz);
+                let val = if b == 0 { a } else { (a >> b) | (a << (sz as u64 - b)) };
+                Value::Concrete(val & rot_mask(sz), t1 | t2)
             }
             (Value::Symbolic(a, t1), Value::Concrete(b, t2)) => {
-                let bv = make_bv(&a, b, log2(sz));
+                let bv = make_bv(&a, b & (sz as u64 - 1), log2(sz));
                 Value::Symbolic(a.slice(sz - 1, 0).ror(&bv), t1 | t2)
             }
             (Value::Concrete(a, t1), Value::Symbolic(b, t2)) => {
@@ -448,15 +467,12 @@ impl Value {
     pub fn rol(self, rhs: Value, sz: u32) -> Value {
         match (self, rhs) {
             (Value::Concrete(a, t1), Value::Concrete(b, t2)) => {
-                // uhhh
-                let na = a << (64 - sz);
-                let rot = na.rotate_left(b as u32);
-                let mask = (1 << b) - 1;
-                let val = ((rot - (rot & mask)) >> (64 - sz as u64)) + (rot & mask);
-                Value::Concrete(val, t1 | t2)
+                let (a, b) = rot_args(a, b, sz);
+                let val = if b == 0 { a } else { (a << b) | (a >> (sz as u64 - b)) };
+                Value::Concrete(val & rot_mask(sz), t1 | t2)
             }
             (Value::Symbolic(a, t1), Value::Concrete(b, t2)) => {
-                let bv = make_bv(&a, b, log2(sz));
+                let bv = make_bv(&a, b & (sz as u64 - 1), log2(sz));
                 Value::Symbolic(a.slice(sz - 1, 0).rol(&bv), t1 | t2)
             }
             (Value::Concrete(a, t1), Value::Symbolic(b, t2)) => {

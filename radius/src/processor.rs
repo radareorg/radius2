@@ -394,8 +394,10 @@ impl Processor {
                         Operations::Interrupt => {
                             let _value = pop_value(state, false, false);
                         }
+                        // 'code,trap,TRAP' pops two like r2, some archs only push one
                         Operations::Trap => {
                             let trap = pop_concrete(state, false, false);
+                            state.stack.pop();
 
                             // Check if this is sBPF architecture
                             let is_sbpf = is_sbpf_arch(&state.r2api.info.bin.arch);
@@ -419,7 +421,10 @@ impl Processor {
                                 state.registers.set(cc.ret.as_str(), ret);
                             }
                         }
-                        Operations::Syscall => self.do_syscall(state),
+                        Operations::Syscall => {
+                            state.stack.pop();
+                            self.do_syscall(state);
+                        }
                         _ => do_operation(state, op),
                     }
                 }
