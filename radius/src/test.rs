@@ -448,3 +448,54 @@ fn esil_ops() {
     state.registers.set("rdx", Value::Symbolic(x, 0));
     assert_eq!(eval(&mut radius, &mut state, "16,rdx,CLZ,rdx,POPCNT"), [8, 2]);
 }
+
+// branches, calls and returns on mips execute their delay slot first
+#[test]
+fn delay_slots() {
+    use crate::radius::{Radius, RadiusOption};
+    use crate::value::Value;
+
+    let check = 0x202ec;
+    let ret = 0x20324;
+    let run = |a0: Option<u64>| {
+        let options = [RadiusOption::Debug(false)];
+        let mut radius = Radius::new_with_options(Some("../tests/delay"), &options);
+        let mut state = radius.call_state(check);
+        let x = state.bv("x", 32);
+        let arg = a0.map_or(Value::Symbolic(x.clone(), 0), |a| Value::Concrete(a, 0));
+        state.registers.set("a0", arg);
+        state.registers.set("ra", Value::Concrete(ret, 0));
+        let sp = state.registers.get("sp").as_u64();
+        radius.breakpoint(ret);
+        let states = radius.run_all(state);
+        (states, x, sp)
+    };
+
+    // sum(10) == 135 only works if the andi in the jal delay slot ran
+    for (a0, expected) in [(0x1a, 1), (10, 1), (0, 0), (3, 0)] {
+        let (mut states, _, sp) = run(Some(a0));
+        assert_eq!(states.len(), 1, "a0 = {}", a0);
+        let state = &mut states[0];
+        assert_eq!(state.registers.get_pc().as_u64(), Some(ret));
+        let v0 = state.registers.get("v0");
+        assert_eq!(state.solver.evalcon_to_u64(&v0), Some(expected), "a0 = {}", a0);
+        // the stack is restored in the delay slot of jr ra
+        assert_eq!(state.registers.get("sp").as_u64(), sp);
+    }
+
+    // the symbolic blez forks after its delay slot
+    let (states, x, _) = run(None);
+    assert_eq!(states.len(), 2);
+    let mut found = false;
+    for mut state in states {
+        let v0 = state.registers.get("v0");
+        if state.check(&v0.eq(&Value::Concrete(1, 0))) {
+            state.assert(&v0.eq(&Value::Concrete(1, 0)));
+            let x = state.evaluate(&x).unwrap().as_u64().unwrap();
+            assert_eq!(x & 0xf, 10);
+            found = true;
+        }
+    }
+    assert!(found);
+}
+
