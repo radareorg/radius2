@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
     - name: Install dependencies
       run: |
         sudo apt-get update
@@ -33,7 +33,7 @@ jobs:
     - name: Run tests
       run: cargo test --workspace --verbose --release
     - name: Upload artifact
-      uses: actions/upload-artifact@v7
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         name: radius2-linux-x86_64
         path: target/release/radius2
@@ -43,7 +43,7 @@ jobs:
     runs-on: macos-latest
 
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
     - name: Install radare2
       run: |
         brew install radare2
@@ -52,7 +52,7 @@ jobs:
     - name: Run tests
       run: cargo test --workspace --verbose --release
     - name: Upload artifact
-      uses: actions/upload-artifact@v7
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
       with:
         name: radius2-macos-x86_64
         path: target/release/radius2
@@ -62,7 +62,7 @@ jobs:
     runs-on: windows-latest
 
     steps:
-    - uses: actions/checkout@v6
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
     - name: Check
       # boolector-sys needs an external boolector.lib on x86_64-pc-windows-msvc.
       # Keep Windows compile coverage without requiring an unsupported final link.
