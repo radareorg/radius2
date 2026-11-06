@@ -135,13 +135,23 @@ pub struct RegisterInfo {
     pub r#type: u64,
     pub type_str: String,
     pub size: u64,
-    // zero registers like riz have an offset of -1
+    // Zero registers like riz use -1, serialized as i64 or u64 depending on radare2.
     #[serde(deserialize_with = "deserialize_offset")]
     pub offset: u64,
 }
 
 fn deserialize_offset<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<u64, D::Error> {
-    Ok(i64::deserialize(deserializer)? as u64)
+    #[derive(Deserialize)]
+    #[serde(untagged)]
+    enum Offset {
+        Unsigned(u64),
+        Signed(i64),
+    }
+
+    Ok(match Offset::deserialize(deserializer)? {
+        Offset::Unsigned(offset) => offset,
+        Offset::Signed(offset) => offset as u64,
+    })
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
